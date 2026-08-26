@@ -50,4 +50,17 @@ class User extends Authenticatable
             'is_blocked'                => 'boolean',
         ];
     }
+
+    /**
+     * Get the merchant profile associated with the user.
+     */
+    public function merchantProfile()
+    {
+        return $this->hasOne(MerchantProfile::class);
+    }
+
+    public function userProfile()
+    {
+        return $this->hasOne(UserProfile::class);
+    }
 }

@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RoleSeeder::class,   // must run first — creates roles
             AdminSeeder::class,
+            MerchantRoleSeeder::class,
+            ProductCategorySeeder::class,
         ]);
     }
 }

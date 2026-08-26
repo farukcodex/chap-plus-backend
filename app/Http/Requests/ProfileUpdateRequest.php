@@ -35,6 +35,9 @@ class ProfileUpdateRequest extends FormRequest
                 Rule::unique('users')->ignore($this->user()->id),
             ],
             'phone'         => ['sometimes', 'nullable', 'string', 'max:20'],
+            'gender'        => ['sometimes', 'nullable', 'string', 'in:Male,Female,Other'],
+            'date_of_birth' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'address'       => ['sometimes', 'nullable', 'string'],
             'profile_photo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ];
     }

@@ -23,26 +23,23 @@ class UserRegisterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:50', 'regex:/^[\pL\s\-\']+$/u'],
             'email' => 'required|email:rfc,dns|unique:users,email',
             'password' => ['required', 'confirmed', Password::defaults()],
+            'country' => 'required|string|size:2|alpha:ascii', 
+            'city' => 'required|string|max:255',
         ];
     }
 
     public function messages(): array
     {
         return [
-            'name.required' => 'Please enter your name.',
-            'name.string' => 'Your name must be a valid text value.',
-            'name.max' => 'Your name may not be greater than 50 characters.',
-            'name.regex' => 'Names may only contain letters, spaces, hyphens, and apostrophes.',
-
             'email.required' => 'An email address is required to create an account.',
             'email.email' => 'Please provide a valid email address.',
             'email.unique' => 'This email is already registered. Try logging in instead.',
-
             'password.required' => 'A secure password is required.',
             'password.confirmed' => 'The password confirmation does not match.',
+            'country.required' => 'Please select your country.',
+            'city.required' => 'Please enter your city.',
         ];
     }
 }
