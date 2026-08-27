@@ -61,8 +61,22 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('/items/{id}', [\App\Http\Controllers\Customer\CartController::class, 'updateCartItem']);
             Route::delete('/items/{id}', [\App\Http\Controllers\Customer\CartController::class, 'removeFromCart']);
         });
+
+        Route::post('/checkout', [\App\Http\Controllers\Customer\CheckoutController::class, 'processCheckout']);
+        Route::post('/orders/{id}/retry-payment', [\App\Http\Controllers\Customer\CheckoutController::class, 'retryPayment']);
+
+        Route::prefix('orders')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\OrderController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Customer\OrderController::class, 'show']);
+            Route::post('/{id}/cancel', [\App\Http\Controllers\Customer\OrderController::class, 'cancel']);
+            Route::post('/{id}/review', [\App\Http\Controllers\Customer\OrderController::class, 'review']);
+            Route::get('/{id}/tracking', [\App\Http\Controllers\Customer\OrderController::class, 'tracking']);
+        });
     });
 });
+
+// M-Pesa Webhook (Must be outside auth middleware!)
+Route::post('/webhooks/mpesa/callback', [\App\Http\Controllers\Customer\CheckoutController::class, 'mpesaWebhook']);
 
 /*
 |--------------------------------------------------------------------------
@@ -93,6 +107,13 @@ Route::prefix('merchant')->group(function () {
             Route::post('/products', [\App\Http\Controllers\Merchant\ProductController::class, 'store']);
             Route::get('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'show']);
             Route::patch('/products/{id}/status', [\App\Http\Controllers\Merchant\ProductController::class, 'updateStatus']);
+
+            // E-commerce Merchant Order Routes
+            Route::prefix('orders')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Merchant\OrderController::class, 'index']);
+                Route::get('/{id}', [\App\Http\Controllers\Merchant\OrderController::class, 'show']);
+                Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
+            });
         });
     });
 });
