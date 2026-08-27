@@ -20,6 +20,7 @@ use App\Http\Controllers\Merchant\OnboardingController;
 Route::prefix('auth')->group(function () {
 
     Route::post('/register', [UserRegisterController::class, 'store']);
+    Route::post('/rider/register', [\App\Http\Controllers\Auth\RiderRegisterController::class, 'store']);
     Route::post('/login', [LoginController::class, 'store']);
 
     Route::get('/google/redirect', [GoogleController::class, 'redirect']);
@@ -116,4 +117,28 @@ Route::prefix('merchant')->group(function () {
             });
         });
     });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Admin Panel routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
+    Route::prefix('riders')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\RiderController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Admin\RiderController::class, 'show']);
+        Route::patch('/{id}/status', [\App\Http\Controllers\Admin\RiderController::class, 'updateStatus']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Rider routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('rider')->middleware('auth:sanctum')->group(function () {
+    Route::post('/profile/setup', [\App\Http\Controllers\Rider\ProfileController::class, 'setup']);
+    Route::post('/profile/documents', [\App\Http\Controllers\Rider\ProfileController::class, 'documents']);
+    Route::post('/profile/finalize', [\App\Http\Controllers\Rider\ProfileController::class, 'finalize']);
 });

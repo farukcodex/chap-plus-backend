@@ -31,7 +31,7 @@ class UserRegisterController extends Controller
                     'password'   => $validated['password'],
                 ]);
 
-                $user->assignRole('user');
+                $user->assignRole('USER');
 
                 // Auto-detect Currency from Country code
                 try {
