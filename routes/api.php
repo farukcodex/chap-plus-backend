@@ -53,8 +53,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Customer E-commerce
     Route::prefix('ecommerce')->group(function () {
         Route::get('/home', [\App\Http\Controllers\Customer\EcommerceController::class, 'home']);
+        Route::get('/categories', [\App\Http\Controllers\Customer\EcommerceController::class, 'categories']);
         Route::get('/products', [\App\Http\Controllers\Customer\EcommerceController::class, 'index']);
         Route::get('/products/{id}', [\App\Http\Controllers\Customer\EcommerceController::class, 'show']);
+        Route::post('/products/{id}/reviews', [\App\Http\Controllers\Customer\EcommerceController::class, 'addReview']);
+        
+        Route::get('/stores', [\App\Http\Controllers\Customer\EcommerceController::class, 'stores']);
+        Route::get('/stores/{id}', [\App\Http\Controllers\Customer\EcommerceController::class, 'storeDetails']);
 
         Route::prefix('cart')->group(function () {
             Route::get('/', [\App\Http\Controllers\Customer\CartController::class, 'getCart']);
@@ -137,8 +142,17 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
 | Rider routes
 |--------------------------------------------------------------------------
 */
-Route::prefix('rider')->middleware('auth:sanctum')->group(function () {
+Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(function () {
     Route::post('/profile/setup', [\App\Http\Controllers\Rider\ProfileController::class, 'setup']);
     Route::post('/profile/documents', [\App\Http\Controllers\Rider\ProfileController::class, 'documents']);
     Route::post('/profile/finalize', [\App\Http\Controllers\Rider\ProfileController::class, 'finalize']);
+
+    Route::prefix('deliveries')->group(function () {
+        Route::get('/available', [\App\Http\Controllers\Rider\DeliveryController::class, 'available']);
+        Route::get('/', [\App\Http\Controllers\Rider\DeliveryController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Rider\DeliveryController::class, 'show']);
+        Route::patch('/{id}/accept', [\App\Http\Controllers\Rider\DeliveryController::class, 'accept']);
+        Route::patch('/{id}/pickup', [\App\Http\Controllers\Rider\DeliveryController::class, 'pickup']);
+        Route::patch('/{id}/deliver', [\App\Http\Controllers\Rider\DeliveryController::class, 'deliver']);
+    });
 });

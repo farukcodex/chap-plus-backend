@@ -11,13 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('cart_items', function (Blueprint $table) {
+        Schema::create('product_reviews', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('cart_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('product_variant_id')->nullable()->constrained()->cascadeOnDelete();
-            $table->integer('quantity')->default(1);
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->integer('rating')->default(5);
+            $table->text('comment')->nullable();
             $table->timestamps();
+            
+            // A user can only review a specific product once
+            $table->unique(['product_id', 'user_id']);
         });
     }
 
@@ -26,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('cart_items');
+        Schema::dropIfExists('product_reviews');
     }
 };

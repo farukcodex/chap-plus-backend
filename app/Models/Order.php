@@ -10,7 +10,8 @@ class Order extends Model
         'user_id', 'merchant_profile_id', 'total_amount', 'delivery_fee', 
         'status', 'delivery_address', 'payment_method', 
         'mpesa_checkout_request_id', 'mpesa_receipt_number', 'customer_phone_number',
-        'rider_id', 'cancellation_reason', 'rating', 'review_comment'
+        'rider_id', 'cancellation_reason', 'rating', 'review_comment',
+        'delivery_otp',
     ];
 
     public function items()

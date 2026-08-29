@@ -15,17 +15,17 @@ class OrderController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $tab = $request->query('tab', 'active'); // active, completed, cancelled
+        $filter = $request->query('filter', 'active'); // active, completed, cancelled
 
         $query = Order::with(['items.product.images', 'merchantProfile'])
             ->where('user_id', $request->user()->id);
 
-        if ($tab === 'active') {
-            $query->whereIn('status', ['pending_payment', 'paid', 'processing', 'on_the_way']);
-        } elseif ($tab === 'completed') {
+        if ($filter === 'active') {
+            $query->whereIn('status', ['pending_payment', 'failed', 'paid', 'processing', 'on_the_way']);
+        } elseif ($filter === 'completed') {
             $query->where('status', 'delivered');
-        } elseif ($tab === 'cancelled') {
-            $query->whereIn('status', ['cancelled', 'failed']);
+        } elseif ($filter === 'cancelled') {
+            $query->whereIn('status', ['cancelled']);
         }
 
         $orders = $query->latest()->paginate(10);

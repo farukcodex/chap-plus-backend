@@ -23,8 +23,8 @@ return new class extends Migration
             // Decimal price adjustment if this variant costs more/less than base_price
             $table->decimal('price_adjustment', 10, 2)->default(0.00); 
             
-            // Stock quantity as a decimal to support fractional grocery (e.g. 1.5 kg)
-            $table->decimal('stock_quantity', 10, 2)->default(0.00);
+            // Stock quantity as an integer
+            $table->integer('stock_quantity')->default(0);
 
             $table->timestamps();
         });

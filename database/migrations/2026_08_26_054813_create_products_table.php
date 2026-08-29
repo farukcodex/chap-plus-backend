@@ -22,7 +22,7 @@ return new class extends Migration
             $table->decimal('discount_price', 10, 2)->nullable();
             
             $table->string('unit_type')->default('pcs'); // pcs, kg, g, liters, etc.
-            $table->decimal('weight_kg', 8, 2)->nullable();
+            $table->decimal('unit_value', 8, 2)->nullable();
             
             $table->boolean('has_variants')->default(false);
             $table->boolean('is_active')->default(true);

@@ -29,6 +29,15 @@ return new class extends Migration
             $table->string('mpesa_receipt_number')->nullable();
             $table->string('customer_phone_number')->nullable();
             
+            // Delivery
+            $table->string('delivery_otp', 10)->nullable();
+            
+            // Tracking & Reviews
+            $table->foreignId('rider_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('cancellation_reason')->nullable();
+            $table->tinyInteger('rating')->nullable();
+            $table->text('review_comment')->nullable();
+            
             $table->timestamps();
             
             $table->foreign('merchant_profile_id')->references('id')->on('merchant_profiles')->cascadeOnDelete();

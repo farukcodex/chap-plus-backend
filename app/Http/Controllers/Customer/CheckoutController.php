@@ -66,7 +66,8 @@ class CheckoutController extends Controller
                 'delivery_address' => $validated['delivery_address'],
                 'customer_phone_number' => $validated['phone_number'],
                 'payment_method' => 'mpesa',
-                'status' => 'pending_payment'
+                'status' => 'pending_payment',
+                'delivery_otp' => (string) random_int(1000, 9999),
             ]);
 
             foreach ($cart->items as $item) {

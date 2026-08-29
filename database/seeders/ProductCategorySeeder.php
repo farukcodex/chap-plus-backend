@@ -10,14 +10,24 @@ class ProductCategorySeeder extends Seeder
     public function run(): void
     {
         $categories = [
-            ['name' => 'Fashion', 'slug' => 'fashion'],
-            ['name' => 'Grocery', 'slug' => 'grocery'],
-            ['name' => 'Electronics', 'slug' => 'electronics'],
-            ['name' => 'Beauty', 'slug' => 'beauty'],
+            'Fashion' => ['Shirts', 'Accessories', 'Shoes', 'Bags'],
+            'Grocery' => ['Fruits', 'Vegetables', 'Spices', 'Ingredients'],
+            'Electronics' => ['Phones', 'Laptops', 'MacBook', 'Headphone'],
+            'Beauty' => ['Skincare', 'Makeup', 'Hair care', 'Fragrance'],
         ];
 
-        foreach ($categories as $category) {
-            \App\Models\ProductCategory::updateOrCreate(['slug' => $category['slug']], $category);
+        foreach ($categories as $parentName => $subNames) {
+            $parent = \App\Models\ProductCategory::updateOrCreate(
+                ['slug' => \Illuminate\Support\Str::slug($parentName)],
+                ['name' => $parentName]
+            );
+
+            foreach ($subNames as $subName) {
+                \App\Models\ProductCategory::updateOrCreate(
+                    ['slug' => \Illuminate\Support\Str::slug($subName)],
+                    ['name' => $subName, 'parent_id' => $parent->id]
+                );
+            }
         }
     }
 }

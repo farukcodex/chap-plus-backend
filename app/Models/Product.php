@@ -4,11 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
 class Product extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'merchant_profile_id', 'category_id', 'name', 'description', 
-        'base_price', 'discount_price', 'unit_type', 'weight_kg', 
+        'base_price', 'discount_price', 'unit_type', 'unit_value', 
         'has_variants', 'is_active'
     ];
 
@@ -35,5 +38,10 @@ class Product extends Model
     public function variants()
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
     }
 }

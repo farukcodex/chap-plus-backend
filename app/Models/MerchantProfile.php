@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,13 +14,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'city', 
     'currency',
     'business_name', 
-    'address', 
+    'address',
+    'latitude',
+    'longitude',
     'description', 
     'profile_image_path', 
     'cover_image_path'
 ])]
 class MerchantProfile extends Model
 {
+    use HasFactory;
+
     protected $appends = ['profile_image_url', 'cover_image_url'];
     protected $hidden = ['profile_image_path', 'cover_image_path'];
 
@@ -29,6 +34,11 @@ class MerchantProfile extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(MerchantReview::class);
     }
 
     public function getProfileImageUrlAttribute()

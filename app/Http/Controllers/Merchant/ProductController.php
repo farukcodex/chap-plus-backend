@@ -60,7 +60,7 @@ class ProductController extends Controller
             'base_price' => 'required|numeric|min:0',
             'discount_price' => 'nullable|numeric|min:0',
             'unit_type' => 'required|string|max:50',
-            'weight_kg' => 'nullable|numeric|min:0',
+            'unit_value' => 'nullable|numeric|min:0',
             'has_variants' => 'required|boolean',
             'is_active' => 'required|boolean',
             
@@ -73,7 +73,7 @@ class ProductController extends Controller
             'variants.*.sku' => 'nullable|string|max:100',
             'variants.*.attributes' => 'nullable|array', // e.g. {"Size": "L"}
             'variants.*.price_adjustment' => 'nullable|numeric',
-            'variants.*.stock_quantity' => 'required|numeric|min:0',
+            'variants.*.stock_quantity' => 'required|integer|min:0',
         ]);
 
         try {
@@ -88,7 +88,7 @@ class ProductController extends Controller
                 'base_price' => $validated['base_price'],
                 'discount_price' => $validated['discount_price'] ?? null,
                 'unit_type' => $validated['unit_type'],
-                'weight_kg' => $validated['weight_kg'] ?? null,
+                'unit_value' => $validated['unit_value'] ?? null,
                 'has_variants' => $validated['has_variants'],
                 'is_active' => $validated['is_active'],
             ]);
@@ -177,7 +177,13 @@ class ProductController extends Controller
      */
     public function getCategories(): JsonResponse
     {
-        $categories = \App\Models\ProductCategory::select('id', 'name', 'slug', 'icon_url')->get();
+        $categories = \App\Models\ProductCategory::select('id', 'name', 'slug', 'icon_url', 'parent_id')
+            ->whereNull('parent_id')
+            ->with(['subcategories' => function($query) {
+                $query->select('id', 'name', 'slug', 'icon_url', 'parent_id');
+            }])
+            ->get();
+            
         return $this->apiSuccess('Categories retrieved successfully', [
             'categories' => $categories
         ]);

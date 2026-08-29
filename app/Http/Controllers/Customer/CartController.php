@@ -43,7 +43,7 @@ class CartController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'product_variant_id' => 'nullable|exists:product_variants,id',
-            'quantity' => 'required|numeric|min:0.1' // Allow decimals for groceries!
+            'quantity' => 'required|integer|min:1'
         ]);
 
         $cart = Cart::firstOrCreate(['user_id' => $request->user()->id]);
@@ -77,7 +77,7 @@ class CartController extends Controller
     public function updateCartItem(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
-            'quantity' => 'required|numeric|min:0.1'
+            'quantity' => 'required|integer|min:1'
         ]);
 
         $cart = Cart::where('user_id', $request->user()->id)->first();

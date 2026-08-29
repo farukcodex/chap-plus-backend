@@ -20,6 +20,11 @@ class DatabaseSeeder extends Seeder
             AdminSeeder::class,
             MerchantRoleSeeder::class,
             ProductCategorySeeder::class,
+
+            // Uncomment the lines below to generate fake data for local testing
+            DummyUserSeeder::class,
+            DummyMerchantSeeder::class,
+            ProductSeeder::class,
         ]);
     }
 }
