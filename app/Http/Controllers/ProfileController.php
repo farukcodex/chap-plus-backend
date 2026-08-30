@@ -45,7 +45,20 @@ class ProfileController extends Controller
             $userData['phone'] = $profile->phone_number;
             $userData['gender'] = $profile->gender;
             $userData['date_of_birth'] = $profile->date_of_birth ? $profile->date_of_birth->format('Y-m-d') : null;
-            $userData['address'] = $profile->address;
+            $userData['address'] = $profile->address; // Legacy address field
+        }
+
+        // Include all saved delivery addresses
+        $userData['saved_addresses'] = \App\Models\UserAddress::where('user_id', $user->id)
+            ->select('id', 'title', 'address_text', 'latitude', 'longitude')
+            ->get();
+
+        if ($user->hasRole('ECOMMERCE_MERCHANT') && $user->merchantProfile) {
+            $userData['merchant_profile'] = $user->merchantProfile;
+        }
+
+        if ($user->hasRole('RIDER') && $user->riderProfile) {
+            $userData['rider_profile'] = $user->riderProfile;
         }
 
         return $this->apiSuccess('Profile retrieved successfully.', $userData);

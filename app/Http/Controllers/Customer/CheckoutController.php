@@ -28,15 +28,20 @@ class CheckoutController extends Controller
     public function processCheckout(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'delivery_address' => 'required|string',
+            'user_address_id' => 'required|exists:user_addresses,id',
             'phone_number' => 'required|string', // Safaricom number for M-Pesa
         ]);
 
         $user = $request->user();
-        $cart = Cart::with(['items.product', 'items.variant'])->where('user_id', $user->id)->first();
+        $cart = Cart::with(['items.product.merchantProfile', 'items.variant'])->where('user_id', $user->id)->first();
 
         if (!$cart || $cart->items->isEmpty()) {
             return $this->apiError('Your cart is empty', 400);
+        }
+        
+        $userAddress = \App\Models\UserAddress::where('user_id', $user->id)->find($validated['user_address_id']);
+        if (!$userAddress) {
+            return $this->apiError('Invalid delivery address', 400);
         }
 
         try {
@@ -44,11 +49,13 @@ class CheckoutController extends Controller
 
             $total = 0;
             // Assuming for this prototype that all cart items belong to the same merchant.
-            // We just grab the first item's merchant profile ID.
-            $merchantId = $cart->items->first()->product->merchant_profile_id;
+            // We just grab the first item's merchant profile ID and country.
+            $merchantProfile = $cart->items->first()->product->merchantProfile;
+            $merchantId = $merchantProfile->id;
             
-            // Delivery fee logic could be complex, for now flat $5.00
-            $deliveryFee = 5.00;
+            // Determine delivery fee based on merchant's country
+            $countryFee = \App\Models\CountryDeliveryFee::where('country', $merchantProfile->country)->first();
+            $deliveryFee = $countryFee ? $countryFee->fee_amount : 5.00; // fallback to 5.00 if country not found
 
             foreach ($cart->items as $item) {
                 $price = $item->product->base_price;
@@ -63,7 +70,7 @@ class CheckoutController extends Controller
                 'merchant_profile_id' => $merchantId,
                 'total_amount' => $total,
                 'delivery_fee' => $deliveryFee,
-                'delivery_address' => $validated['delivery_address'],
+                'delivery_address' => $userAddress->address_text,
                 'customer_phone_number' => $validated['phone_number'],
                 'payment_method' => 'mpesa',
                 'status' => 'pending_payment',
@@ -180,6 +187,12 @@ class CheckoutController extends Controller
         $resultCode = $callbackData['ResultCode'];
         $checkoutRequestId = $callbackData['CheckoutRequestID'];
 
+        // SAFARICOM SANDBOX QUIRK:
+        // The sandbox often fires the webhook instantly, sometimes BEFORE our main 
+        // checkout process has even finished receiving the CheckoutRequestID from the API 
+        // and saving it to the database! We add a tiny delay to let the DB catch up.
+        sleep(2);
+
         $order = Order::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
 
         if (!$order) {
@@ -187,8 +200,8 @@ class CheckoutController extends Controller
             return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         }
 
-        // Idempotency check: If the order is already processed, ignore duplicate webhooks
-        if ($order->status === 'paid' || $order->status === 'failed') {
+        // Idempotency check: If the order is already paid, ignore duplicate webhooks
+        if ($order->status === 'paid') {
             Log::info('M-Pesa Webhook: Ignored duplicate callback for Order #' . $order->id);
             return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         }

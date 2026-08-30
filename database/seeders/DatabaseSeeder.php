@@ -24,7 +24,11 @@ class DatabaseSeeder extends Seeder
             // Uncomment the lines below to generate fake data for local testing
             DummyUserSeeder::class,
             DummyMerchantSeeder::class,
+            DummyRiderSeeder::class,
             ProductSeeder::class,
+            CountryDeliveryFeeSeeder::class,
+            UserAddressSeeder::class,
+            UserProfileSeeder::class,
         ]);
     }
 }

@@ -78,6 +78,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/{id}/review', [\App\Http\Controllers\Customer\OrderController::class, 'review']);
             Route::get('/{id}/tracking', [\App\Http\Controllers\Customer\OrderController::class, 'tracking']);
         });
+
+        Route::prefix('addresses')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\UserAddressController::class, 'index']);
+            Route::post('/', [\App\Http\Controllers\Customer\UserAddressController::class, 'store']);
+            Route::delete('/{id}', [\App\Http\Controllers\Customer\UserAddressController::class, 'destroy']);
+        });
     });
 });
 
@@ -143,6 +149,10 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
 |--------------------------------------------------------------------------
 */
 Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(function () {
+    Route::get('/profile', [\App\Http\Controllers\Rider\ProfileController::class, 'getProfile']);
+    Route::post('/profile', [\App\Http\Controllers\Rider\ProfileController::class, 'updateProfile']);
+    
+    // Onboarding specific steps
     Route::post('/profile/setup', [\App\Http\Controllers\Rider\ProfileController::class, 'setup']);
     Route::post('/profile/documents', [\App\Http\Controllers\Rider\ProfileController::class, 'documents']);
     Route::post('/profile/finalize', [\App\Http\Controllers\Rider\ProfileController::class, 'finalize']);

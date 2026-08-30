@@ -19,6 +19,10 @@ return new class extends Migration
             $table->date('dob')->nullable();
             $table->string('address')->nullable();
             
+            $table->string('country', 2)->nullable();
+            $table->string('city')->nullable();
+            $table->string('currency', 3)->nullable();
+            
             // Documents
             $table->string('license_image_path')->nullable();
             $table->string('national_id_image_path')->nullable();

@@ -20,21 +20,43 @@ class CartController extends Controller
     {
         $cart = Cart::firstOrCreate(['user_id' => $request->user()->id]);
         
-        $cart->load(['items.product.images', 'items.variant']);
+        $cart->load(['items.product.merchantProfile', 'items.variant']);
 
         // Calculate totals dynamically
-        $total = 0;
+        $subTotal = 0;
+        $deliveryCharge = 0;
+        
+        // Fallback to the user's local currency if the cart is empty
+        $currency = $request->user()->userProfile->currency ?? 'USD';
+
+        if ($cart->items->isNotEmpty()) {
+            $merchantProfile = $cart->items->first()->product->merchantProfile;
+            // Override with merchant's currency if available
+            $currency = $merchantProfile->currency ?? $currency;
+            
+            // Get country delivery fee
+            $countryFee = \App\Models\CountryDeliveryFee::where('country', $merchantProfile->country)->first();
+            $deliveryCharge = $countryFee ? (float) $countryFee->fee_amount : 5.00;
+        }
+
         foreach ($cart->items as $item) {
             $price = $item->product->base_price;
             if ($item->variant && $item->variant->price_adjustment) {
                 $price += $item->variant->price_adjustment;
             }
-            $total += ($price * $item->quantity);
+            $subTotal += ($price * $item->quantity);
         }
+
+        $totalCost = $subTotal + $deliveryCharge;
 
         return $this->apiSuccess('Cart retrieved', [
             'cart' => $cart,
-            'total' => round($total, 2)
+            'summary' => [
+                'sub_total' => round($subTotal, 2),
+                'delivery_charge' => round($deliveryCharge, 2),
+                'total_cost' => round($totalCost, 2),
+                'currency' => $currency
+            ]
         ]);
     }
 
@@ -71,7 +93,7 @@ class CartController extends Controller
             ]);
         }
 
-        return $this->apiSuccess('Added to cart successfully', ['item' => $cartItem]);
+        return $this->getCart($request);
     }
 
     public function updateCartItem(Request $request, string $id): JsonResponse
@@ -92,7 +114,7 @@ class CartController extends Controller
 
         $cartItem->update(['quantity' => $validated['quantity']]);
 
-        return $this->apiSuccess('Cart item updated', ['item' => $cartItem]);
+        return $this->getCart($request);
     }
 
     public function removeFromCart(Request $request, string $id): JsonResponse
@@ -109,6 +131,6 @@ class CartController extends Controller
 
         $cartItem->delete();
 
-        return $this->apiSuccess('Item removed from cart');
+        return $this->getCart($request);
     }
 }

@@ -177,10 +177,10 @@ class ProductController extends Controller
      */
     public function getCategories(): JsonResponse
     {
-        $categories = \App\Models\ProductCategory::select('id', 'name', 'slug', 'icon_url', 'parent_id')
+        $categories = \App\Models\ProductCategory::select('id', 'name', 'slug', 'parent_id')
             ->whereNull('parent_id')
             ->with(['subcategories' => function($query) {
-                $query->select('id', 'name', 'slug', 'icon_url', 'parent_id');
+                $query->select('id', 'name', 'slug', 'parent_id');
             }])
             ->get();
             

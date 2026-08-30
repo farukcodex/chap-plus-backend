@@ -4,10 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
 class RiderProfile extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'user_id', 'phone_number', 'gender', 'dob', 'address',
+        'country', 'city', 'currency',
         'license_image_path', 'national_id_image_path',
         'mpesa_payout_number', 'status'
     ];

@@ -11,23 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('merchant_profiles', function (Blueprint $table) {
+        Schema::create('user_addresses', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            
-            $table->string('country');
-            $table->string('city');
-            $table->string('currency', 3)->nullable(); // e.g., 'USD', 'CAD', 'BDT'
-            
-            $table->string('business_name')->nullable(); 
-            $table->text('address')->nullable();
+            $table->string('title')->nullable(); // Home, Office, etc.
+            $table->string('address_text');
             $table->decimal('latitude', 10, 7)->nullable();
             $table->decimal('longitude', 10, 7)->nullable();
-            $table->text('description')->nullable();
-            
-            $table->string('profile_image_path')->nullable();
-            $table->string('cover_image_path')->nullable();
-            
             $table->timestamps();
         });
     }
@@ -37,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('merchant_profiles');
+        Schema::dropIfExists('user_addresses');
     }
 };

@@ -17,10 +17,10 @@ class EcommerceController extends Controller
     public function home(Request $request): JsonResponse
     {
         // Only fetch Main Categories (parent_id is null) but include their Subcategories
-        $categories = ProductCategory::select('id', 'name', 'slug', 'icon_url', 'parent_id')
+        $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id')
             ->whereNull('parent_id')
             ->with(['subcategories' => function($query) {
-                $query->select('id', 'name', 'slug', 'icon_url', 'parent_id');
+                $query->select('id', 'name', 'slug', 'parent_id');
             }])
             ->get();
         
@@ -46,12 +46,12 @@ class EcommerceController extends Controller
 
     public function categories(Request $request): JsonResponse
     {
-        $query = ProductCategory::select('id', 'name', 'slug', 'icon_url', 'parent_id');
+        $query = ProductCategory::select('id', 'name', 'slug', 'parent_id');
 
         // Only attach the nested subcategories array if we haven't explicitly turned it off
         if ($request->boolean('include_subcategories', true)) {
             $query->with(['subcategories' => function($q) {
-                $q->select('id', 'name', 'slug', 'icon_url', 'parent_id');
+                $q->select('id', 'name', 'slug', 'parent_id');
             }]);
         }
 
