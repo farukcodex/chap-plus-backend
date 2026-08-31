@@ -40,7 +40,7 @@ class OrderController extends Controller
             ->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404);
+            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
         $orderData = $order->toArray();
@@ -62,11 +62,11 @@ class OrderController extends Controller
         $order = Order::where('user_id', $request->user()->id)->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404);
+            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
         if (!in_array($order->status, ['pending_payment', 'paid'])) {
-            return $this->apiError("You cannot cancel an order that is already {$order->status}", 400);
+            return $this->apiError("You cannot cancel an order that is already {$order->status}", 400, ['code' => 'INVALID_ORDER_STATUS']);
         }
 
         $order->update([
@@ -81,22 +81,22 @@ class OrderController extends Controller
     {
         $validated = $request->validate([
             'rating' => 'required|integer|min:1|max:5',
-            'comment' => 'nullable|string'
+            'review_comment' => 'nullable|string|max:1000'
         ]);
 
         $order = Order::where('user_id', $request->user()->id)->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404);
+            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
         if ($order->status !== 'delivered') {
-            return $this->apiError('You can only review delivered orders', 400);
+            return $this->apiError('You can only review delivered orders', 400, ['code' => 'INVALID_ORDER_STATUS']);
         }
 
         $order->update([
             'rating' => $validated['rating'],
-            'review_comment' => $validated['comment']
+            'review_comment' => $validated['review_comment'] ?? null
         ]);
 
         return $this->apiSuccess('Review submitted successfully', ['order' => $order]);
@@ -107,7 +107,7 @@ class OrderController extends Controller
         $order = Order::with(['rider.riderProfile'])->where('user_id', $request->user()->id)->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404);
+            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
         // Fake timeline data for the UI
@@ -120,6 +120,7 @@ class OrderController extends Controller
 
         return $this->apiSuccess('Order tracking info retrieved', [
             'status' => $order->status,
+            'delivery_otp' => $order->delivery_otp,
             'timeline' => $timeline,
             'rider' => $order->rider
         ]);

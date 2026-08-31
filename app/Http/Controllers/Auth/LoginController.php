@@ -104,7 +104,7 @@ class LoginController extends Controller
         }
 
         // Check if user is actually an admin
-        if (! $user->hasRole('admin')) {
+        if (! $user->hasRole('ADMIN')) {
             return $this->apiError('Invalid admin credentials.', 401, ['code' => 'INVALID_CREDENTIALS']);
         }
 

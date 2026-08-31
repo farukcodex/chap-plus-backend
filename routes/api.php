@@ -50,6 +50,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/profile', [ProfileController::class, 'update']);
     Route::delete('/profile', [ProfileController::class, 'destroy']);
 
+    // Wallet (Unified for all authenticated users)
+    Route::prefix('wallet')->group(function () {
+        Route::get('/', [\App\Http\Controllers\WalletController::class, 'index']);
+        Route::get('/transactions', [\App\Http\Controllers\WalletController::class, 'transactions']);
+        Route::post('/payout', [\App\Http\Controllers\WalletController::class, 'requestPayout']);
+        Route::get('/payouts', [\App\Http\Controllers\WalletController::class, 'payouts']);
+    });
+
     // Customer E-commerce
     Route::prefix('ecommerce')->group(function () {
         Route::get('/home', [\App\Http\Controllers\Customer\EcommerceController::class, 'home']);
