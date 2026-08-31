@@ -109,7 +109,6 @@ Route::prefix('merchant')->group(function () {
     Route::post('/register', [OnboardingController::class, 'register']);
     
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('/profile', [OnboardingController::class, 'getProfile']);
         Route::post('/profile', [OnboardingController::class, 'setupProfile']);
         
         // E-commerce Merchant Routes
@@ -149,7 +148,6 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
 |--------------------------------------------------------------------------
 */
 Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(function () {
-    Route::get('/profile', [\App\Http\Controllers\Rider\ProfileController::class, 'getProfile']);
     Route::post('/profile', [\App\Http\Controllers\Rider\ProfileController::class, 'updateProfile']);
     
     // Onboarding specific steps
@@ -157,8 +155,7 @@ Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(functi
     Route::post('/profile/documents', [\App\Http\Controllers\Rider\ProfileController::class, 'documents']);
     Route::post('/profile/finalize', [\App\Http\Controllers\Rider\ProfileController::class, 'finalize']);
 
-    Route::prefix('deliveries')->group(function () {
-        Route::get('/available', [\App\Http\Controllers\Rider\DeliveryController::class, 'available']);
+    Route::prefix('deliveries')->middleware('rider.approved')->group(function () {
         Route::get('/', [\App\Http\Controllers\Rider\DeliveryController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Rider\DeliveryController::class, 'show']);
         Route::patch('/{id}/accept', [\App\Http\Controllers\Rider\DeliveryController::class, 'accept']);

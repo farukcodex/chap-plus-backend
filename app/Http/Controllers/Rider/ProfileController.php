@@ -13,24 +13,6 @@ class ProfileController extends Controller
 {
     use ApiResponseTrait;
 
-    public function getProfile(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $riderProfile = $user->riderProfile;
-
-        // if (!$riderProfile) {
-        //     return $this->apiError('Rider profile not found.', 404);
-        // }
-
-        // $profileData = $riderProfile->toArray();
-        // $profileData['role'] = $user->getRoleNames()->first();
-        // $profileData['name'] = $user->name;
-        // $profileData['email'] = $user->email;
-        // $profileData['profile_photo_url'] = $user->profile_photo_url;
-
-        return $this->apiSuccess('Rider profile retrieved successfully.', $user);
-    }
-
     public function updateProfile(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -79,7 +61,7 @@ class ProfileController extends Controller
             $user->update(['profile_photo_path' => $path]);
         }
 
-        return $this->getProfile($request);
+        return app(\App\Http\Controllers\ProfileController::class)->index($request);
     }
 
     public function setup(Request $request): JsonResponse

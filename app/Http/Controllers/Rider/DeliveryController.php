@@ -13,41 +13,28 @@ class DeliveryController extends Controller
 {
     use ApiResponseTrait;
 
-    public function available(): JsonResponse
-    {
-        // Get orders ready for pickup without a rider, hide the OTP
-        $orders = Order::where('status', 'ready_for_pickup')
-            ->whereNull('rider_id')
-            ->with(['merchantProfile' => function ($query) {
-                $query->select('id', 'business_name', 'address', 'city');
-            }])
-            ->latest()
-            ->paginate(15);
-            
-        $orders->getCollection()->makeHidden('delivery_otp');
-
-        return $this->apiSuccess('Available deliveries retrieved', ['orders' => $orders]);
-    }
-
     public function index(Request $request): JsonResponse
     {
         $riderId = $request->user()->id;
-        $tab = $request->query('tab', 'pending'); // pending or completed
+        $filter = $request->query('filter', 'available'); // available, active, or completed
 
-        $query = Order::where('rider_id', $riderId)
-            ->with(['merchantProfile' => function ($query) {
-                $query->select('id', 'business_name', 'address', 'city');
-            }]);
+        $query = Order::with(['merchantProfile' => function ($q) {
+            $q->select('id', 'business_name', 'address', 'city');
+        }]);
 
-        if ($tab === 'completed') {
-            $query->where('status', 'delivered');
+        if ($filter === 'available') {
+            // Global: ready for pickup, no rider assigned
+            $query->where('status', 'ready_for_pickup')->whereNull('rider_id');
+        } elseif ($filter === 'completed') {
+            // Personal: delivered by this rider
+            $query->where('rider_id', $riderId)->where('status', 'delivered');
         } else {
-            // Pending / Active
-            $query->whereIn('status', ['ready_for_pickup', 'on_the_way']);
+            // Personal: active (assigned to this rider but not yet delivered)
+            $query->where('rider_id', $riderId)->whereIn('status', ['ready_for_pickup', 'on_the_way']);
         }
 
         $orders = $query->latest()->paginate(15);
-        $orders->getCollection()->makeHidden('delivery_otp'); // Hide OTP from list view just in case
+        $orders->getCollection()->makeHidden('delivery_otp'); // Hide OTP from list view
 
         return $this->apiSuccess('Deliveries retrieved', ['orders' => $orders]);
     }

@@ -98,26 +98,6 @@ class OnboardingController extends Controller
     /**
      * Get the authenticated merchant's profile data.
      */
-    public function getProfile(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $merchantProfile = $user->merchantProfile;
-
-        if (!$merchantProfile) {
-            return $this->apiError('Merchant profile not found.', 404);
-        }
-
-        $profileData = $merchantProfile->toArray();
-        $profileData['role'] = $user->getRoleNames()->first();
-
-        return $this->apiSuccess('Merchant profile retrieved successfully.', [
-            'profile' => $profileData
-        ]);
-    }
-
-    /**
-     * Handle merchant profile setup (images, shop name, etc).
-     */
     public function setupProfile(Request $request): JsonResponse
     {
         $request->validate([
@@ -156,8 +136,6 @@ class OnboardingController extends Controller
             'cover_image_path' => $coverImagePath,
         ]);
 
-        return $this->apiSuccess('Merchant profile setup completed successfully.', [
-            'profile' => $merchantProfile
-        ]);
+        return app(\App\Http\Controllers\ProfileController::class)->index($request);
     }
 }

@@ -12,7 +12,14 @@ class UserAddressSeeder extends Seeder
      */
     public function run(): void
     {
-        $users = \App\Models\User::where('email', 'like', '%@yopmail.com')->get();
+        // Delete any existing dummy addresses that belong to non-USER roles (Rider/Merchant/Admin)
+        $invalidUsers = \App\Models\User::whereHas('roles', function($q) {
+            $q->whereIn('name', ['RIDER', 'ECOMMERCE_MERCHANT', 'ADMIN']);
+        })->pluck('id');
+        \App\Models\UserAddress::whereIn('user_id', $invalidUsers)->delete();
+
+        // Only attach checkout delivery addresses to standard Users
+        $users = \App\Models\User::role('USER')->where('email', 'like', '%@yopmail.com')->get();
 
         foreach ($users as $user) {
             \App\Models\UserAddress::updateOrCreate(

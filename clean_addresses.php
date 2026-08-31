@@ -1,0 +1,1 @@
+<?php require __DIR__.'/vendor/autoload.php'; \ = require_once __DIR__.'/bootstrap/app.php'; \->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); \ = \App\Models\User::whereHas('roles', function(\) { \->whereIn('name', ['RIDER', 'ECOMMERCE_MERCHANT', 'ADMIN']); })->pluck('id'); \App\Models\UserAddress::whereIn('user_id', \)->delete(); echo 'Done';

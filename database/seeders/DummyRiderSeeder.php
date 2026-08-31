@@ -13,11 +13,11 @@ class DummyRiderSeeder extends Seeder
     public function run(): void
     {
         for ($i = 1; $i <= 5; $i++) {
-            $user = \App\Models\User::firstOrCreate(
+            $user = \App\Models\User::updateOrCreate(
                 ['email' => "rider{$i}@yopmail.com"],
                 [
                     'name' => "Rider {$i}",
-                    'password' => \Illuminate\Support\Facades\Hash::make('password'),
+                    'password' => \Illuminate\Support\Facades\Hash::make('12348765'),
                     'email_verified_at' => now(),
                 ]
             );
