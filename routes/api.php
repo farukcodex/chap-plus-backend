@@ -161,5 +161,6 @@ Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(functi
         Route::patch('/{id}/accept', [\App\Http\Controllers\Rider\DeliveryController::class, 'accept']);
         Route::patch('/{id}/pickup', [\App\Http\Controllers\Rider\DeliveryController::class, 'pickup']);
         Route::patch('/{id}/deliver', [\App\Http\Controllers\Rider\DeliveryController::class, 'deliver']);
+        Route::post('/{id}/location', [\App\Http\Controllers\Rider\DeliveryController::class, 'updateLocation']);
     });
 });

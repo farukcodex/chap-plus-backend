@@ -43,7 +43,14 @@ class OrderController extends Controller
             return $this->apiError('Order not found', 404);
         }
 
-        return $this->apiSuccess('Order details retrieved', ['order' => $order]);
+        $orderData = $order->toArray();
+        $orderData['live_location'] = null;
+
+        if ($order->status === 'on_the_way') {
+            $orderData['live_location'] = \Illuminate\Support\Facades\Cache::get('order_' . $order->id . '_location');
+        }
+
+        return $this->apiSuccess('Order details retrieved', ['order' => $orderData]);
     }
 
     public function cancel(Request $request, string $id): JsonResponse

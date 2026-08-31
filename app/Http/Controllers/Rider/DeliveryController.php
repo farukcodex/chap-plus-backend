@@ -96,4 +96,30 @@ class DeliveryController extends Controller
 
         return $this->apiSuccess('Delivery confirmed successfully!', ['order' => $order]);
     }
+
+    public function updateLocation(string $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+        ]);
+
+        $order = Order::where('rider_id', $request->user()->id)->where('status', 'on_the_way')->find($id);
+
+        if (!$order) {
+            return $this->apiError('Order is not currently active for tracking', 400);
+        }
+
+        // Broadcast the location immediately via WebSockets
+        event(new \App\Events\RiderLocationUpdated($order->id, $request->latitude, $request->longitude));
+
+        // Save only the latest location to cache so the customer can fetch it on load without waiting for the next ping
+        \Illuminate\Support\Facades\Cache::put(
+            'order_'.$order->id.'_location', 
+            ['latitude' => $request->latitude, 'longitude' => $request->longitude], 
+            3600 // Cache for 1 hour
+        );
+
+        return $this->apiSuccess('Location updated');
+    }
 }
