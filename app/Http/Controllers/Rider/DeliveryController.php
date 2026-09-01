@@ -114,23 +114,29 @@ class DeliveryController extends Controller
 
             // 1. Fetch Commission Settings
             $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
+            $riderCommissionPercent = \App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.00;
             
             $totalAmount = $order->total_amount;
             $deliveryFee = $order->delivery_fee ?? 0;
 
-            $adminCommission = $totalAmount * ($merchantCommissionPercent / 100);
-            $merchantEarnings = $totalAmount - $adminCommission;
-            $riderEarnings = $deliveryFee;
+            // Calculate splits
+            $adminMerchantCommission = $totalAmount * ($merchantCommissionPercent / 100);
+            $merchantEarnings = $totalAmount - $adminMerchantCommission;
+
+            $adminRiderCommission = $deliveryFee * ($riderCommissionPercent / 100);
+            $riderEarnings = $deliveryFee - $adminRiderCommission;
+            
+            $totalAdminCommission = $adminMerchantCommission + $adminRiderCommission;
 
             // 2. Admin Wallet
             $adminUser = \App\Models\User::role('ADMIN')->first();
             if ($adminUser) {
                 $adminWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $adminUser->id]);
-                $adminWallet->increment('balance', $adminCommission);
+                $adminWallet->increment('balance', $totalAdminCommission);
                 \App\Models\WalletTransaction::create([
                     'wallet_id' => $adminWallet->id,
                     'type' => 'credit',
-                    'amount' => $adminCommission,
+                    'amount' => $totalAdminCommission,
                     'reference_type' => \App\Models\Order::class,
                     'reference_id' => $order->id,
                     'description' => "Platform commission for Order #{$order->id}",

@@ -98,6 +98,13 @@ Route::middleware('auth:sanctum')->group(function () {
 // M-Pesa Webhook (Must be outside auth middleware!)
 Route::post('/webhooks/mpesa/callback', [\App\Http\Controllers\Customer\CheckoutController::class, 'mpesaWebhook']);
 
+// Webhooks
+Route::post('/checkout/callback', [\App\Http\Controllers\Customer\CheckoutController::class, 'handleCallback']);
+
+// Public Pages
+Route::get('/pages', [\App\Http\Controllers\Public\PageController::class, 'index']);
+Route::get('/pages/{slug}', [\App\Http\Controllers\Public\PageController::class, 'show']);
+
 /*
 |--------------------------------------------------------------------------
 | Admin Auth routes
@@ -143,6 +150,12 @@ Route::prefix('merchant')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
+    Route::get('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'index']);
+    Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'store']);
+
+    Route::get('/pages/{slug}', [\App\Http\Controllers\Admin\PageController::class, 'show']);
+    Route::put('/pages/{slug}', [\App\Http\Controllers\Admin\PageController::class, 'update']);
+
     Route::prefix('riders')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\RiderController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\RiderController::class, 'show']);

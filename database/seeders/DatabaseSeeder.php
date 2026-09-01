@@ -20,6 +20,8 @@ class DatabaseSeeder extends Seeder
             AdminSeeder::class,
             MerchantRoleSeeder::class,
             ProductCategorySeeder::class,
+            PlatformSettingSeeder::class,
+            PageSeeder::class,
 
             // Uncomment the lines below to generate fake data for local testing
             DummyUserSeeder::class,
@@ -29,6 +31,7 @@ class DatabaseSeeder extends Seeder
             CountryDeliveryFeeSeeder::class,
             UserAddressSeeder::class,
             UserProfileSeeder::class,
+
         ]);
     }
 }
