@@ -12,7 +12,7 @@ class ProductSeeder extends Seeder
      */
     public function run(): void
     {
-        // Generates 20 random products for the existing merchant and categories
-        \App\Models\Product::factory(20)->create();
+        // Generates 100 random products for the existing merchants and categories
+        \App\Models\Product::factory(100)->create();
     }
 }

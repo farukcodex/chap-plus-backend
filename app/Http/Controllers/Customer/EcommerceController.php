@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 
 class EcommerceController extends Controller
 {
@@ -28,6 +29,8 @@ class EcommerceController extends Controller
 
         // Let's get the 10 latest active products for the home screen feed, filtered by user's country
         $featuredProducts = Product::with(['images', 'variants'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews')
             ->where('is_active', true)
             ->whereHas('merchantProfile', function ($q) use ($userCountry) {
                 if ($userCountry) {
@@ -37,6 +40,14 @@ class EcommerceController extends Controller
             ->latest()
             ->take(10)
             ->get();
+
+        $user = Auth::guard('sanctum')->user();
+        $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
+
+        $featuredProducts->transform(function ($product) use ($favoriteIds) {
+            $product->is_favorite = in_array($product->id, $favoriteIds);
+            return $product;
+        });
 
         return $this->apiSuccess('Home data retrieved', [
             'categories' => $categories,
@@ -81,7 +92,10 @@ class EcommerceController extends Controller
     {
         $userCountry = $request->user()->userProfile->country ?? null;
 
-        $query = Product::with(['images', 'variants'])->where('is_active', true)
+        $query = Product::with(['images', 'variants'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews')
+            ->where('is_active', true)
             ->whereHas('merchantProfile', function ($q) use ($userCountry) {
                 if ($userCountry) {
                     $q->where('country', $userCountry);
@@ -163,6 +177,11 @@ class EcommerceController extends Controller
             });
         }
 
+        // Filter by Highly Recommended
+        if ($request->boolean('is_highly_recommended')) {
+            $query->having('reviews_avg_rating', '>=', 4);
+        }
+
         // Sorting
         if ($request->has('sort')) {
             switch ($request->sort) {
@@ -172,6 +191,9 @@ class EcommerceController extends Controller
                 case 'price_desc':
                     $query->orderBy('base_price', 'desc');
                     break;
+                case 'rating_desc':
+                    $query->orderBy('reviews_avg_rating', 'desc');
+                    break;
                 case 'newest':
                     $query->latest();
                     break;
@@ -180,10 +202,23 @@ class EcommerceController extends Controller
                     break;
             }
         } else {
-            $query->latest();
+            // Default sort: if highly recommended, sort by rating, else newest
+            if ($request->boolean('is_highly_recommended')) {
+                $query->orderBy('reviews_avg_rating', 'desc');
+            } else {
+                $query->latest();
+            }
         }
 
         $products = $query->paginate(20);
+
+        $user = Auth::guard('sanctum')->user();
+        $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
+
+        $products->getCollection()->transform(function ($product) use ($favoriteIds) {
+            $product->is_favorite = in_array($product->id, $favoriteIds);
+            return $product;
+        });
 
         return $this->apiSuccess('Products retrieved', ['products' => $products]);
     }
@@ -235,6 +270,29 @@ class EcommerceController extends Controller
             ->inRandomOrder()
             ->take(4)
             ->get();
+
+        $user = Auth::guard('sanctum')->user();
+        if ($user) {
+            $product->is_favorite = \App\Models\Favorite::where('user_id', $user->id)
+                ->where('product_id', $product->id)
+                ->exists();
+                
+            $favIds = \App\Models\Favorite::where('user_id', $user->id)
+                ->whereIn('product_id', $relatedProducts->pluck('id'))
+                ->pluck('product_id')
+                ->toArray();
+                
+            $relatedProducts->transform(function($rp) use ($favIds) {
+                $rp->is_favorite = in_array($rp->id, $favIds);
+                return $rp;
+            });
+        } else {
+            $product->is_favorite = false;
+            $relatedProducts->transform(function($rp) {
+                $rp->is_favorite = false;
+                return $rp;
+            });
+        }
 
         return $this->apiSuccess('Product details retrieved', [
             'product' => $product,

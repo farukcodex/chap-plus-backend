@@ -24,6 +24,7 @@ class OnboardingController extends Controller
     public function register(Request $request, OtpService $otpService): JsonResponse
     {
         $validated = $request->validate([
+            'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => ['required', 'confirmed', Password::defaults()],
             'merchant_type' => 'required|string|in:ECOMMERCE_MERCHANT,RESTAURANT_MERCHANT,HOTEL_MERCHANT,BUS_MERCHANT',
@@ -36,7 +37,7 @@ class OnboardingController extends Controller
             $user = DB::transaction(function () use ($validated, $otpService): User {
                 // 1. Create the user
                 $user = User::create([
-                    'name' => explode('@', $validated['email'])[0], // Default name
+                    'name' => $validated['name'],
                     'email' => $validated['email'],
                     'password' => Hash::make($validated['password']),
                 ]);
@@ -101,9 +102,9 @@ class OnboardingController extends Controller
     public function setupProfile(Request $request): JsonResponse
     {
         $request->validate([
-            'shop_name' => 'required|string|max:255',
-            'shop_address' => 'required|string',
-            'shop_description' => 'required|string',
+            'business_name' => 'required|string|max:255',
+            'address' => 'required|string',
+            'description' => 'required|string',
             'profile_image' => 'nullable|image|max:5120', // 5MB Max
             'cover_image' => 'nullable|image|max:5120',
         ]);
@@ -129,9 +130,9 @@ class OnboardingController extends Controller
 
         // Update Profile
         $merchantProfile->update([
-            'business_name' => $request->shop_name,
-            'address' => $request->shop_address,
-            'description' => $request->shop_description,
+            'business_name' => $request->business_name,
+            'address' => $request->address,
+            'description' => $request->description,
             'profile_image_path' => $profileImagePath,
             'cover_image_path' => $coverImagePath,
         ]);

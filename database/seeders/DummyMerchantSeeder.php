@@ -12,16 +12,29 @@ class DummyMerchantSeeder extends Seeder
      */
     public function run(): void
     {
-        // Generate 5 predictable merchants (merchant1@yopmail.com to merchant5@yopmail.com)
-        $users = \App\Models\User::factory(5)
+        // Generate 5 predictable ecommerce merchants
+        $ecommerceUsers = \App\Models\User::factory(5)
             ->sequence(fn ($sequence) => ['email' => 'merchant' . ($sequence->index + 1) . '@yopmail.com'])
             ->create();
 
-        foreach ($users as $index => $user) {
+        foreach ($ecommerceUsers as $index => $user) {
             $user->assignRole('ECOMMERCE_MERCHANT');
             \App\Models\MerchantProfile::factory()->create([
                 'user_id' => $user->id,
                 'business_name' => 'Test Shop ' . ($index + 1),
+            ]);
+        }
+
+        // Generate 3 predictable restaurant merchants
+        $restaurantUsers = \App\Models\User::factory(3)
+            ->sequence(fn ($sequence) => ['email' => 'restaurant' . ($sequence->index + 1) . '@yopmail.com'])
+            ->create();
+
+        foreach ($restaurantUsers as $index => $user) {
+            $user->assignRole('RESTAURANT_MERCHANT');
+            \App\Models\MerchantProfile::factory()->create([
+                'user_id' => $user->id,
+                'business_name' => 'Test Restaurant ' . ($index + 1),
             ]);
         }
     }

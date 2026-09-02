@@ -53,7 +53,7 @@ class ProfileController extends Controller
             ->select('id', 'title', 'address_text', 'latitude', 'longitude')
             ->get();
 
-        if ($user->hasRole('ECOMMERCE_MERCHANT') && $user->merchantProfile) {
+        if ($user->merchantProfile) {
             $userData['merchant_profile'] = $user->merchantProfile;
         }
 

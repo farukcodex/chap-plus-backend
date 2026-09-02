@@ -44,4 +44,14 @@ class Product extends Model
     {
         return $this->hasMany(ProductReview::class);
     }
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function getReviewsAvgRatingAttribute($value)
+    {
+        return $value !== null ? number_format((float) $value, 1, '.', '') : null;
+    }
 }

@@ -13,8 +13,10 @@ return new class extends Migration
     {
         Schema::create('product_categories', function (Blueprint $table) {
             $table->id();
+            $table->string('type')->default('ecommerce');
+            $table->foreignId('merchant_profile_id')->nullable()->constrained()->cascadeOnDelete();
             $table->string('name');
-            $table->string('slug')->unique();
+            $table->string('slug');
             $table->foreignId('parent_id')->nullable()->constrained('product_categories')->nullOnDelete();
             $table->timestamps();
         });

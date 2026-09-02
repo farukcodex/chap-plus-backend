@@ -3,10 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class ProductCategory extends Model
 {
-    protected $fillable = ['name', 'slug', 'parent_id'];
+    use HasFactory;
+
+    protected $fillable = ['type', 'merchant_profile_id', 'name', 'slug', 'parent_id'];
+
+    public function merchantProfile()
+    {
+        return $this->belongsTo(MerchantProfile::class);
+    }
 
     public function products()
     {

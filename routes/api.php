@@ -69,6 +69,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/stores', [\App\Http\Controllers\Customer\EcommerceController::class, 'stores']);
         Route::get('/stores/{id}', [\App\Http\Controllers\Customer\EcommerceController::class, 'storeDetails']);
 
+        Route::prefix('favorites')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\FavoriteController::class, 'index']);
+            Route::post('/{id}', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggle']);
+        });
+
         Route::prefix('cart')->group(function () {
             Route::get('/', [\App\Http\Controllers\Customer\CartController::class, 'getCart']);
             Route::post('/add', [\App\Http\Controllers\Customer\CartController::class, 'addToCart']);
@@ -132,14 +137,41 @@ Route::prefix('merchant')->group(function () {
             Route::get('/products', [\App\Http\Controllers\Merchant\ProductController::class, 'index']);
             Route::post('/products', [\App\Http\Controllers\Merchant\ProductController::class, 'store']);
             Route::get('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'show']);
+            Route::put('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'update']);
+            Route::delete('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'destroy']);
             Route::patch('/products/{id}/status', [\App\Http\Controllers\Merchant\ProductController::class, 'updateStatus']);
 
-            // E-commerce Merchant Order Routes
-            Route::prefix('orders')->group(function () {
-                Route::get('/', [\App\Http\Controllers\Merchant\OrderController::class, 'index']);
-                Route::get('/{id}', [\App\Http\Controllers\Merchant\OrderController::class, 'show']);
-                Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
-            });
+            // E-commerce Merchant Analytics Dashboard
+            Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
+            Route::get('/analytics/top-products', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'topProducts']);
+
+            // E-commerce Merchant Home Dashboard
+            Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
+        });
+
+        // Restaurant Merchant Routes
+        Route::prefix('restaurant')->middleware(['role:RESTAURANT_MERCHANT'])->group(function () {
+            Route::get('/categories', [\App\Http\Controllers\Merchant\ProductController::class, 'getCategories']);
+            Route::get('/foods', [\App\Http\Controllers\Merchant\ProductController::class, 'index']);
+            Route::post('/foods', [\App\Http\Controllers\Merchant\ProductController::class, 'store']);
+            Route::get('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'show']);
+            Route::put('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'update']);
+            Route::delete('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'destroy']);
+            Route::patch('/foods/{id}/status', [\App\Http\Controllers\Merchant\ProductController::class, 'updateStatus']);
+
+            // Restaurant Merchant Analytics Dashboard
+            Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
+            Route::get('/analytics/top-foods', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'topProducts']);
+
+            // Restaurant Merchant Home Dashboard
+            Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
+        });
+
+        // E-commerce Merchant Order Routes
+        Route::prefix('orders')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Merchant\OrderController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Merchant\OrderController::class, 'show']);
+            Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
         });
     });
 });
