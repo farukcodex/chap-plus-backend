@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
             DummyMerchantSeeder::class,
             DummyRiderSeeder::class,
             ProductSeeder::class,
+            HotelSeeder::class,
             CountryDeliveryFeeSeeder::class,
             UserAddressSeeder::class,
             UserProfileSeeder::class,

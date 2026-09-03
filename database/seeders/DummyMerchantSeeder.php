@@ -37,5 +37,17 @@ class DummyMerchantSeeder extends Seeder
                 'business_name' => 'Test Restaurant ' . ($index + 1),
             ]);
         }
+        // Generate 3 predictable hotel merchants
+        $hotelUsers = \App\Models\User::factory(3)
+            ->sequence(fn ($sequence) => ['email' => 'hotel' . ($sequence->index + 1) . '@yopmail.com'])
+            ->create();
+
+        foreach ($hotelUsers as $index => $user) {
+            $user->assignRole('HOTEL_MERCHANT');
+            \App\Models\MerchantProfile::factory()->create([
+                'user_id' => $user->id,
+                'business_name' => 'Test Hotel Manager ' . ($index + 1),
+            ]);
+        }
     }
 }

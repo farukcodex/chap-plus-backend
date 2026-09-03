@@ -196,8 +196,39 @@ class CheckoutController extends Controller
         $order = Order::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
 
         if (!$order) {
-            Log::error('M-Pesa Webhook: Order not found for CheckoutRequestID ' . $checkoutRequestId);
-            return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+            // Check if it's a Hotel Booking
+            $booking = \App\Models\HotelBooking::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
+            
+            if ($booking) {
+                if ($booking->status === 'paid') {
+                    return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+                }
+
+                if ($resultCode == 0) {
+                    $receiptNumber = null;
+                    $callbackMetadata = $callbackData['CallbackMetadata']['Item'] ?? [];
+                    foreach ($callbackMetadata as $item) {
+                        if ($item['Name'] === 'MpesaReceiptNumber') {
+                            $receiptNumber = $item['Value'];
+                            break;
+                        }
+                    }
+                    
+                    $booking->update([
+                        'status' => 'paid',
+                        'mpesa_receipt_number' => $receiptNumber
+                    ]);
+                    Log::info("Hotel Booking #{$booking->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
+                } else {
+                    $booking->update(['status' => 'failed']);
+                    Log::warning("Hotel Booking #{$booking->id} payment failed.");
+                }
+                
+                return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+            }
+
+            Log::error('M-Pesa Webhook: Order or Booking not found for CheckoutRequestID ' . $checkoutRequestId);
+            return response()->json(['ResultCode' => 1, 'ResultDesc' => 'Record not found']);
         }
 
         // Idempotency check: If the order is already paid, ignore duplicate webhooks

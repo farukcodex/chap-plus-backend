@@ -58,6 +58,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/payouts', [\App\Http\Controllers\WalletController::class, 'payouts']);
     });
 
+    // Customer Hotel API
+    Route::prefix('hotel')->group(function () {
+        Route::get('/properties', [\App\Http\Controllers\Customer\HotelController::class, 'index']);
+        Route::get('/properties/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'show']);
+        Route::get('/hosts', [\App\Http\Controllers\Customer\HotelController::class, 'hosts']);
+        Route::get('/hosts/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'hostDetails']);
+        
+        Route::post('/bookings', [\App\Http\Controllers\Customer\HotelBookingController::class, 'book']);
+        Route::get('/bookings', [\App\Http\Controllers\Customer\HotelBookingController::class, 'index']);
+        Route::get('/bookings/{id}', [\App\Http\Controllers\Customer\HotelBookingController::class, 'show']);
+        Route::post('/bookings/{id}/retry-payment', [\App\Http\Controllers\Customer\HotelBookingController::class, 'retryPayment']);
+    });
+
     // Customer E-commerce
     Route::prefix('ecommerce')->group(function () {
         Route::get('/home', [\App\Http\Controllers\Customer\EcommerceController::class, 'home']);
@@ -195,6 +208,13 @@ Route::prefix('merchant')->group(function () {
             
             // Hotel Merchant Analytics
             Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
+            
+            // Hotel Merchant Bookings
+            Route::prefix('bookings')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Merchant\HotelBookingController::class, 'index']);
+                Route::get('/{id}', [\App\Http\Controllers\Merchant\HotelBookingController::class, 'show']);
+                Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\HotelBookingController::class, 'updateStatus']);
+            });
         });
     });
 });
