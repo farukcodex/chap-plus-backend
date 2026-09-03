@@ -147,6 +147,13 @@ Route::prefix('merchant')->group(function () {
 
             // E-commerce Merchant Home Dashboard
             Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
+
+            // E-commerce Merchant Order Routes
+            Route::prefix('orders')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Merchant\OrderController::class, 'index']);
+                Route::get('/{id}', [\App\Http\Controllers\Merchant\OrderController::class, 'show']);
+                Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
+            });
         });
 
         // Restaurant Merchant Routes
@@ -165,13 +172,13 @@ Route::prefix('merchant')->group(function () {
 
             // Restaurant Merchant Home Dashboard
             Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
-        });
 
-        // E-commerce Merchant Order Routes
-        Route::prefix('orders')->group(function () {
-            Route::get('/', [\App\Http\Controllers\Merchant\OrderController::class, 'index']);
-            Route::get('/{id}', [\App\Http\Controllers\Merchant\OrderController::class, 'show']);
-            Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
+            // Restaurant Merchant Order Routes
+            Route::prefix('orders')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Merchant\OrderController::class, 'index']);
+                Route::get('/{id}', [\App\Http\Controllers\Merchant\OrderController::class, 'show']);
+                Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
+            });
         });
     });
 });

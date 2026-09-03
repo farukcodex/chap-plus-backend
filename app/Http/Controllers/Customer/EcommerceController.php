@@ -17,46 +17,45 @@ class EcommerceController extends Controller
 
     public function home(Request $request): JsonResponse
     {
-        $type = 'ecommerce';
+        // Fetch Main Categories (global only)
+        $categoriesQuery = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+            ->whereNull('parent_id')
+            ->whereNull('merchant_profile_id');
+            
+        // Fetch featured products
+        $productsQuery = Product::with(['images', 'variants'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews')
+            ->where('is_active', true);
+
+        // Apply type filter if provided (e.g. ?type=ecommerce or ?type=restaurant)
         if ($request->filled('type')) {
-            $reqType = strtolower($request->type);
-            if ($reqType === 'shop') $reqType = 'ecommerce';
-            if ($reqType === 'resturant') $reqType = 'restaurant';
-            $type = $reqType;
+            $type = strtolower($request->type);
+            $roleName = strtoupper($type) . '_MERCHANT';
+
+            $categoriesQuery->where('type', $type);
+            $productsQuery->whereHas('merchantProfile.user.roles', function($r) use ($roleName) {
+                $r->where('name', $roleName);
+            });
         }
 
-        $roleName = strtoupper($type) . '_MERCHANT';
-
-        // Only fetch Main Categories for the vertical
-        $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
-            ->whereNull('parent_id')
-            ->where('type', $type)
-            ->whereNull('merchant_profile_id')
-            ->with(['subcategories' => function($query) use ($type) {
-                $query->select('id', 'name', 'slug', 'parent_id', 'type')
-                      ->where('type', $type)
-                      ->whereNull('merchant_profile_id');
-            }])
-            ->get();
+        $categories = $categoriesQuery->with(['subcategories' => function($query) use ($request) {
+            $query->select('id', 'name', 'slug', 'parent_id', 'type')
+                  ->whereNull('merchant_profile_id');
+            if ($request->filled('type')) {
+                $query->where('type', strtolower($request->type));
+            }
+        }])->get();
         
         $userCountry = $request->user()->userProfile->country ?? null;
 
-        // Let's get the 10 latest active products for this specific vertical
-        $featuredProducts = Product::with(['images', 'variants'])
-            ->withAvg('reviews', 'rating')
-            ->withCount('reviews')
-            ->where('is_active', true)
-            ->whereHas('merchantProfile', function ($q) use ($userCountry, $roleName) {
-                if ($userCountry) {
-                    $q->where('country', $userCountry);
-                }
-                $q->whereHas('user.roles', function($r) use ($roleName) {
-                    $r->where('name', $roleName);
-                });
-            })
-            ->latest()
-            ->take(10)
-            ->get();
+        if ($userCountry) {
+            $productsQuery->whereHas('merchantProfile', function ($q) use ($userCountry) {
+                $q->where('country', $userCountry);
+            });
+        }
+
+        $featuredProducts = $productsQuery->latest()->take(10)->get();
 
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
@@ -76,24 +75,21 @@ class EcommerceController extends Controller
     {
         $query = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type');
 
-        // Filter by vertical/service type (default to ecommerce)
-        $type = 'ecommerce';
-        if ($request->filled('type')) {
-            $reqType = strtolower($request->type);
-            if ($reqType === 'shop') $reqType = 'ecommerce';
-            if ($reqType === 'resturant') $reqType = 'restaurant';
-            $type = $reqType;
-        }
+        // Only fetch global categories
+        $query->whereNull('merchant_profile_id');
 
-        // Only fetch global categories (where merchant_profile_id is null) for the specified type
-        $query->where('type', $type)->whereNull('merchant_profile_id');
+        if ($request->filled('type')) {
+            $query->where('type', strtolower($request->type));
+        }
 
         // Only attach the nested subcategories array if we haven't explicitly turned it off
         if ($request->boolean('include_subcategories', true)) {
-            $query->with(['subcategories' => function($q) use ($type) {
+            $query->with(['subcategories' => function($q) use ($request) {
                 $q->select('id', 'name', 'slug', 'parent_id', 'type')
-                  ->where('type', $type)
                   ->whereNull('merchant_profile_id');
+                if ($request->filled('type')) {
+                    $q->where('type', strtolower($request->type));
+                }
             }]);
         }
 
@@ -123,31 +119,23 @@ class EcommerceController extends Controller
     {
         $userCountry = $request->user()->userProfile->country ?? null;
 
-        // Determine the vertical type (default to ecommerce)
-        $type = 'ecommerce';
-        if ($request->filled('type')) {
-            $reqType = strtolower($request->type);
-            if ($reqType === 'shop') $reqType = 'ecommerce';
-            if ($reqType === 'resturant') $reqType = 'restaurant';
-            $type = $reqType;
-        }
-
-        $roleName = strtoupper($type) . '_MERCHANT';
-
         $query = Product::with(['images', 'variants'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->where('is_active', true)
-            ->whereHas('merchantProfile', function ($q) use ($userCountry, $roleName) {
-                if ($userCountry) {
-                    $q->where('country', $userCountry);
-                }
-                
-                // Only fetch products belonging to merchants of this vertical
-                $q->whereHas('user.roles', function($r) use ($roleName) {
-                    $r->where('name', $roleName);
-                });
+            ->where('is_active', true);
+            
+        if ($userCountry) {
+            $query->whereHas('merchantProfile', function ($q) use ($userCountry) {
+                $q->where('country', $userCountry);
             });
+        }
+
+        if ($request->filled('type')) {
+            $roleName = strtoupper($request->type) . '_MERCHANT';
+            $query->whereHas('merchantProfile.user.roles', function($r) use ($roleName) {
+                $r->where('name', $roleName);
+            });
+        }
 
         // Filter by Merchant Store
         if ($request->has('merchant_profile_id')) {
@@ -377,16 +365,8 @@ class EcommerceController extends Controller
             ->withCount('reviews');
 
         // Filter by vertical/service type based on user role
-        if ($request->has('type')) {
-            $type = strtolower($request->type); // 'shop', 'restaurant', 'hotel', 'transport'
-            
-            // Map the frontend type to our backend role names
-            $roleName = strtoupper($type) . '_MERCHANT'; 
-            if ($type === 'shop' || $type === 'ecommerce') {
-                $roleName = 'ECOMMERCE_MERCHANT';
-            } elseif ($type === 'resturant') { // Handle common frontend spelling mistake
-                $roleName = 'RESTAURANT_MERCHANT';
-            }
+        if ($request->filled('type')) {
+            $roleName = strtoupper($request->type) . '_MERCHANT'; 
 
             $query->whereHas('user.roles', function($q) use ($roleName) {
                 $q->where('name', $roleName);

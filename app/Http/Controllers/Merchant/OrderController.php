@@ -21,21 +21,18 @@ class OrderController extends Controller
             return $this->apiError('Merchant profile not found.', 404);
         }
 
-        $tab = $request->query('status', 'all'); 
-        // Expected from UI: all, on_the_way, delivered, cancelled
+        $status = $request->query('status'); 
 
         $query = Order::with(['items.product.images'])
             ->where('merchant_profile_id', $merchantProfile->id);
 
-        // We exclude 'pending_payment' because merchants shouldn't prepare unpaid orders
-        if ($tab === 'all') {
+        if ($status) {
+            // Support multiple statuses if comma-separated (e.g. ?status=delivered,cancelled,failed)
+            $statuses = array_map('trim', explode(',', $status));
+            $query->whereIn('status', $statuses);
+        } else {
+            // Default: Fetch all except 'pending_payment' because merchants shouldn't prepare unpaid orders
             $query->where('status', '!=', 'pending_payment');
-        } elseif ($tab === 'on_the_way') {
-            $query->where('status', 'on_the_way');
-        } elseif ($tab === 'delivered') {
-            $query->where('status', 'delivered');
-        } elseif ($tab === 'cancelled') {
-            $query->whereIn('status', ['cancelled', 'failed']);
         }
 
         $orders = $query->latest()->paginate(15);
@@ -72,9 +69,17 @@ class OrderController extends Controller
             return $this->apiError('Order not found', 404);
         }
 
-        // Merchants can only start processing an order if it's currently paid
+        // State Machine Security Validation
         if ($validated['status'] === 'processing' && $order->status !== 'paid') {
-            return $this->apiError('You can only process orders that have been successfully paid.', 400);
+            return $this->apiError('You can only accept (process) orders that are currently "paid".', 400);
+        }
+
+        if ($validated['status'] === 'ready_for_pickup' && $order->status !== 'processing') {
+            return $this->apiError('You can only mark an order as ready if it is currently "processing".', 400);
+        }
+
+        if ($validated['status'] === 'cancelled' && in_array($order->status, ['on_the_way', 'delivered'])) {
+            return $this->apiError('You cannot cancel an order that is already on the way or delivered.', 400);
         }
 
         $order->update(['status' => $validated['status']]);
