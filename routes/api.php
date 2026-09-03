@@ -180,6 +180,22 @@ Route::prefix('merchant')->group(function () {
                 Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\OrderController::class, 'updateStatus']);
             });
         });
+
+        // Hotel Merchant Routes
+        Route::prefix('hotel')->middleware(['role:HOTEL_MERCHANT'])->group(function () {
+            Route::get('/properties', [\App\Http\Controllers\Merchant\HotelController::class, 'index']);
+            Route::post('/properties', [\App\Http\Controllers\Merchant\HotelController::class, 'store']);
+            Route::get('/properties/{id}', [\App\Http\Controllers\Merchant\HotelController::class, 'show']);
+            Route::put('/properties/{id}', [\App\Http\Controllers\Merchant\HotelController::class, 'update']);
+            Route::delete('/properties/{id}', [\App\Http\Controllers\Merchant\HotelController::class, 'destroy']);
+            Route::patch('/properties/{id}/status', [\App\Http\Controllers\Merchant\HotelController::class, 'updateStatus']);
+
+            // Hotel Merchant Home Dashboard (Can reuse generic HomeController or create custom)
+            Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
+            
+            // Hotel Merchant Analytics
+            Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
+        });
     });
 });
 

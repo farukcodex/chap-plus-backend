@@ -41,6 +41,11 @@ class MerchantProfile extends Model
         return $this->hasMany(MerchantReview::class);
     }
 
+    public function hotels()
+    {
+        return $this->hasMany(Hotel::class);
+    }
+
     public function getProfileImageUrlAttribute()
     {
         if (!$this->profile_image_path) {
