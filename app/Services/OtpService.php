@@ -17,12 +17,12 @@ class OtpService
         try {
             // Prevent OTP spam (1 minute cooldown)
             // OTP is valid for 10 minutes. If it expires in more than 9 minutes, it was sent less than 1 min ago.
-            if ($user->otp_expires_at && $user->otp_expires_at->gt(now()->addMinutes(9))) {
-                return [
-                    'success' => false,
-                    'message' => 'Please wait 1 minute before requesting a new code.',
-                ];
-            }
+            // if ($user->otp_expires_at && $user->otp_expires_at->gt(now()->addMinutes(9))) {
+            //     return [
+            //         'success' => false,
+            //         'message' => 'Please wait 1 minute before requesting a new code.',
+            //     ];
+            // }
 
             // Generate otp
             $otp = random_int(100000, 999999);
@@ -30,18 +30,17 @@ class OtpService
             // Save it the otp and its expiration to database
             $user->forceFill([
                 'otp_code' => Hash::make($otp),
-                'otp_expires_at' => now()->addMinutes(10),
+                'otp_expires_at' => now()->addMinutes(1),
             ])->save();
 
             // Send email
-            $user->notify(new EmailOtpNotification($otp,$otp_from));
+            $user->notify(new EmailOtpNotification($otp, $otp_from));
 
             // Return the success message
             return [
                 'success' => true,
                 'message' => 'A verification code has been sent to your email address.',
             ];
-
         } catch (\Throwable $e) {
             Log::error('Failed to send email OTP', [
                 'user_id' => $user->id,

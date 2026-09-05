@@ -62,6 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('hotel')->group(function () {
         Route::get('/properties', [\App\Http\Controllers\Customer\HotelController::class, 'index']);
         Route::get('/properties/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'show']);
+        Route::post('/properties/{id}/reviews', [\App\Http\Controllers\Customer\HotelController::class, 'addReview']);
+        
         Route::get('/hosts', [\App\Http\Controllers\Customer\HotelController::class, 'hosts']);
         Route::get('/hosts/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'hostDetails']);
         
@@ -208,6 +210,7 @@ Route::prefix('merchant')->group(function () {
             
             // Hotel Merchant Analytics
             Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
+            Route::get('/analytics/top-performers', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'topProducts']);
             
             // Hotel Merchant Bookings
             Route::prefix('bookings')->group(function () {
@@ -230,6 +233,18 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
 
     Route::get('/pages/{slug}', [\App\Http\Controllers\Admin\PageController::class, 'show']);
     Route::put('/pages/{slug}', [\App\Http\Controllers\Admin\PageController::class, 'update']);
+
+    Route::prefix('users')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\UserController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Admin\UserController::class, 'show']);
+    });
+    
+    // Refunds
+    Route::prefix('refunds')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\RefundController::class, 'index']);
+        Route::post('/{id}/auto', [\App\Http\Controllers\Admin\RefundController::class, 'processAutomatic']);
+        Route::post('/{id}/manual', [\App\Http\Controllers\Admin\RefundController::class, 'processManual']);
+    });
 
     Route::prefix('riders')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\RiderController::class, 'index']);

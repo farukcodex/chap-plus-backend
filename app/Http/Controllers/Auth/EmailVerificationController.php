@@ -65,9 +65,9 @@ class EmailVerificationController extends Controller
             return $this->apiError('Invalid credentials.', 401, ['code' => 'INVALID_CREDENTIALS']);
         }
 
-        if ($user->email_verified_at) {
-            return $this->apiError('This email address has already been verified.', 409, ['code' => 'EMAIL_ALREADY_VERIFIED']);
-        }
+        // if ($user->email_verified_at) {
+        //     return $this->apiError('This email address has already been verified.', 409, ['code' => 'EMAIL_ALREADY_VERIFIED']);
+        // }
 
         // if ($user->status !== 'active') {
         //     return $this->apiError('Your account is not active.', 403, ['code' => 'ACCOUNT_NOT_ACTIVE']);

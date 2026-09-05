@@ -218,6 +218,7 @@ class CheckoutController extends Controller
                         'status' => 'paid',
                         'mpesa_receipt_number' => $receiptNumber
                     ]);
+
                     Log::info("Hotel Booking #{$booking->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
                 } else {
                     $booking->update(['status' => 'failed']);

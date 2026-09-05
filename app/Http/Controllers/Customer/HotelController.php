@@ -107,4 +107,38 @@ class HotelController extends Controller
             'host' => $host
         ]);
     }
+
+    /**
+     * Submit a review for a property
+     */
+    public function addReview(Request $request, string $id): JsonResponse
+    {
+        $hotel = Hotel::where('is_active', true)->find($id);
+
+        if (!$hotel) {
+            return $this->apiError('Property not found', 404);
+        }
+
+        $validated = $request->validate([
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string|max:1000'
+        ]);
+
+        // Verify the user actually stayed at this hotel
+        $hasStayed = \App\Models\HotelBooking::where('user_id', $request->user()->id)
+            ->where('hotel_id', $hotel->id)
+            ->whereIn('status', ['checked_in', 'checked_out'])
+            ->exists();
+
+        if (!$hasStayed) {
+            return $this->apiError('You can only review properties you have stayed at.', 403);
+        }
+
+        $review = \App\Models\HotelReview::updateOrCreate(
+            ['hotel_id' => $hotel->id, 'user_id' => $request->user()->id],
+            ['rating' => $validated['rating'], 'comment' => $validated['comment'] ?? null]
+        );
+
+        return $this->apiSuccess('Review submitted successfully', ['review' => $review], 201);
+    }
 }

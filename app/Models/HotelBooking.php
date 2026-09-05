@@ -43,4 +43,9 @@ class HotelBooking extends Model
     {
         return $this->belongsTo(MerchantProfile::class);
     }
+
+    public function refund()
+    {
+        return $this->morphOne(Refund::class, 'refundable');
+    }
 }
