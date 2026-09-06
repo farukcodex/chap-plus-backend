@@ -228,6 +228,81 @@ class CheckoutController extends Controller
                 return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
             }
 
+            // Check if it's a Bus Booking
+            $busBooking = \App\Models\BusBooking::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
+
+            if ($busBooking) {
+                if ($busBooking->status === 'paid') {
+                    return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+                }
+
+                if ($resultCode == 0) {
+                    $receiptNumber = null;
+                    $callbackMetadata = $callbackData['CallbackMetadata']['Item'] ?? [];
+                    foreach ($callbackMetadata as $item) {
+                        if ($item['Name'] === 'MpesaReceiptNumber') {
+                            $receiptNumber = $item['Value'];
+                            break;
+                        }
+                    }
+                    
+                    \Illuminate\Support\Facades\DB::beginTransaction();
+                    try {
+                        $busBooking->update([
+                            'status' => 'paid',
+                            'mpesa_receipt_number' => $receiptNumber
+                        ]);
+
+                        // INSTANT PAYOUT LOGIC
+                        $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
+                        $adminCommission = $busBooking->total_price * ($merchantCommissionPercent / 100);
+                        $merchantEarnings = $busBooking->total_price - $adminCommission;
+
+                        // Credit Admin Wallet
+                        $adminUser = \App\Models\User::role('ADMIN')->first();
+                        if ($adminUser) {
+                            $adminWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $adminUser->id]);
+                            $adminWallet->increment('balance', $adminCommission);
+                            \App\Models\WalletTransaction::create([
+                                'wallet_id' => $adminWallet->id,
+                                'type' => 'credit',
+                                'amount' => $adminCommission,
+                                'reference_type' => \App\Models\BusBooking::class,
+                                'reference_id' => $busBooking->id,
+                                'description' => "Platform commission for Bus Booking #{$busBooking->id}",
+                            ]);
+                        }
+
+                        // Credit Merchant Wallet
+                        $merchantUser = $busBooking->merchantProfile->user;
+                        $merchantWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $merchantUser->id]);
+                        $merchantWallet->increment('balance', $merchantEarnings);
+                        \App\Models\WalletTransaction::create([
+                            'wallet_id' => $merchantWallet->id,
+                            'type' => 'credit',
+                            'amount' => $merchantEarnings,
+                            'reference_type' => \App\Models\BusBooking::class,
+                            'reference_id' => $busBooking->id,
+                            'description' => "Earnings for Bus Booking #{$busBooking->id}",
+                        ]);
+
+                        \Illuminate\Support\Facades\DB::commit();
+                        Log::info("Bus Booking #{$busBooking->id} paid successfully and wallets credited via M-Pesa. Receipt: {$receiptNumber}");
+                    } catch (\Exception $e) {
+                        \Illuminate\Support\Facades\DB::rollBack();
+                        Log::error("Failed to process Bus Booking payout: " . $e->getMessage());
+                    }
+                } else {
+                    $busBooking->update(['status' => 'failed']);
+                    Log::warning("Bus Booking #{$busBooking->id} payment failed.");
+                    
+                    // Release the Reverb lock instantly
+                    event(new \App\Events\SeatUnlockedEvent($busBooking->bus_id, $busBooking->travel_date->format('Y-m-d'), $busBooking->seat_numbers));
+                }
+                
+                return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+            }
+
             Log::error('M-Pesa Webhook: Order or Booking not found for CheckoutRequestID ' . $checkoutRequestId);
             return response()->json(['ResultCode' => 1, 'ResultDesc' => 'Record not found']);
         }

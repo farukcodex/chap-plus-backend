@@ -16,6 +16,7 @@ class ProfileController extends Controller
     public function updateProfile(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
             'phone_number' => 'sometimes|string|max:20',
             'gender' => 'sometimes|string|in:Male,Female,Other',
             'dob' => 'sometimes|date',
@@ -23,7 +24,9 @@ class ProfileController extends Controller
             'country' => 'sometimes|string|size:2|alpha:ascii',
             'city' => 'sometimes|string|max:255',
             'mpesa_payout_number' => 'sometimes|string|max:20',
-            'profile_picture' => 'nullable|image|max:2048'
+            'profile_picture' => 'nullable|image|max:2048',
+            'license_image' => 'nullable|image|max:5120',
+            'national_id_image' => 'nullable|image|max:5120',
         ]);
 
         $user = $request->user();
@@ -33,6 +36,12 @@ class ProfileController extends Controller
             return $this->apiError('Rider profile not found.', 404);
         }
 
+        // Update User Model Fields
+        if (isset($validated['name'])) {
+            $user->update(['name' => $validated['name']]);
+        }
+
+        // Update RiderProfile Model Fields
         $profileFields = [];
         if (isset($validated['phone_number'])) $profileFields['phone_number'] = $validated['phone_number'];
         if (isset($validated['gender'])) $profileFields['gender'] = $validated['gender'];
@@ -50,6 +59,16 @@ class ProfileController extends Controller
             } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
                 // Ignore invalid or handled by validation
             }
+        }
+
+        if ($request->hasFile('license_image')) {
+            $path = $request->file('license_image')->store('rider_documents', 'public');
+            $profileFields['license_image_path'] = $path;
+        }
+
+        if ($request->hasFile('national_id_image')) {
+            $path = $request->file('national_id_image')->store('rider_documents', 'public');
+            $profileFields['national_id_image_path'] = $path;
         }
 
         if (!empty($profileFields)) {
@@ -71,20 +90,20 @@ class ProfileController extends Controller
             'gender' => 'required|string|in:Male,Female,Other',
             'dob' => 'required|date',
             'address' => 'required|string|max:255',
-            'country' => 'required|string|size:2|alpha:ascii',
-            'city' => 'required|string|max:255',
+            // 'country' => 'required|string|size:2|alpha:ascii',
+            // 'city' => 'required|string|max:255',
         ]);
         
         // Auto-detect Currency from Country code
-        try {
-            $isoData = (new \League\ISO3166\ISO3166)->alpha2($validated['country']);
-            $validated['currency'] = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
-        } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
-            return response()->json([
-                'message' => 'The provided country code is not a valid ISO 3166-1 alpha-2 code.',
-                'errors' => ['country' => ['Invalid country code.']]
-            ], 422);
-        }
+        // try {
+        //     $isoData = (new \League\ISO3166\ISO3166)->alpha2($validated['country']);
+        //     $validated['currency'] = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
+        // } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
+        //     return response()->json([
+        //         'message' => 'The provided country code is not a valid ISO 3166-1 alpha-2 code.',
+        //         'errors' => ['country' => ['Invalid country code.']]
+        //     ], 422);
+        // }
 
         // Update the rest on the RiderProfile table
         $profile = $request->user()->riderProfile;

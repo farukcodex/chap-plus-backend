@@ -24,15 +24,18 @@ class AnalyticsController extends Controller
         $user = $request->user();
         $merchant = $user->merchantProfile;
         $isHotel = $user->hasRole('HOTEL_MERCHANT');
+        $isBus = $user->hasRole('BUS_MERCHANT');
 
         if (!$merchant) {
             return $this->apiError('Merchant profile not found', 404);
         }
 
-        $year = $request->query('year', now()->year);
+        $wallet = Wallet::firstOrCreate(
+            ['user_id' => $user->id],
+            ['balance' => 0.00, 'currency' => 'KES']
+        );
 
-        // 1. Payout Balance
-        $wallet = Wallet::firstOrCreate(['user_id' => $user->id]);
+        $year = $request->query('year', now()->year);
 
         // 2. Monthly Earnings (from Wallet Transactions type=credit for this user)
         $monthlyEarnings = [];
@@ -53,6 +56,8 @@ class AnalyticsController extends Controller
 
         if ($isHotel) {
             return $this->getHotelAnalytics($merchant, $wallet, $monthlyEarnings);
+        } elseif ($isBus) {
+            return $this->getBusAnalytics($merchant, $wallet, $monthlyEarnings);
         } else {
             return $this->getEcommerceAnalytics($merchant, $wallet, $monthlyEarnings);
         }
@@ -142,11 +147,53 @@ class AnalyticsController extends Controller
         ]);
     }
 
+        private function getBusAnalytics($merchant, $wallet, $monthlyEarnings)
+    {
+        // For Buses, there is NO pending escrow in this fully automated flow, because 
+        // they get paid instantly upon M-Pesa success.
+        $pendingEscrowBalance = 0;
+
+        // 3. Stats (All Time)
+        $bookingsCount = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)->count();
+        $guestsCount = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)->distinct('user_id')->count('user_id');
+        $avgBookingValue = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)->avg('total_price') ?? 0.00;
+
+        // 4. Top Performing Buses
+        $topBuses = \App\Models\Bus::select('buses.id', 'buses.name', 'buses.price_per_seat', \Illuminate\Support\Facades\DB::raw('COUNT(bus_bookings.id) as total_sold'))
+            ->join('bus_bookings', 'buses.id', '=', 'bus_bookings.bus_id')
+            ->where('buses.merchant_profile_id', $merchant->id)
+            ->where('bus_bookings.status', 'paid')
+            ->groupBy('buses.id', 'buses.name', 'buses.price_per_seat')
+            ->orderByDesc('total_sold')
+            ->take(5)
+            ->get();
+
+        foreach ($topBuses as $bus) {
+            $primaryImage = \App\Models\BusImage::where('bus_id', $bus->id)->where('is_primary', true)->first();
+            $bus->image = $primaryImage ? $primaryImage->image_path : null;
+            $bus->total_sold = (int) $bus->total_sold;
+        }
+
+        return $this->apiSuccess('Analytics retrieved successfully', [
+            'balance' => round($wallet->balance, 2),
+            'pending_escrow_balance' => round($pendingEscrowBalance, 2),
+            'currency' => $wallet->currency,
+            'monthly_earnings' => $monthlyEarnings,
+            'stats' => [
+                'bookings' => $bookingsCount,
+                'guests' => $guestsCount,
+                'avg_booking_value' => round($avgBookingValue, 2),
+            ],
+            'top_performers' => $topBuses
+        ]);
+    }
+
     public function topProducts(Request $request): JsonResponse
     {
         $user = $request->user();
         $merchant = $user->merchantProfile;
         $isHotel = $user->hasRole('HOTEL_MERCHANT');
+        $isBus = $user->hasRole('BUS_MERCHANT');
 
         if (!$merchant) {
             return $this->apiError('Merchant profile not found', 404);
@@ -154,6 +201,8 @@ class AnalyticsController extends Controller
 
         if ($isHotel) {
             return $this->getTopHotels($merchant);
+        } elseif ($isBus) {
+            return $this->getTopBuses($merchant);
         }
 
         // Find all products by joining order_items, paginated
@@ -202,6 +251,29 @@ class AnalyticsController extends Controller
 
         return $this->apiSuccess('Top hotels retrieved successfully', [
             'top_performers' => $topHotels
+        ]);
+    }
+    private function getTopBuses($merchant)
+    {
+        $topBuses = \App\Models\Bus::select('buses.id', 'buses.name', 'buses.price_per_seat', \Illuminate\Support\Facades\DB::raw('COUNT(bus_bookings.id) as total_sold'))
+            ->leftJoin('bus_bookings', function ($join) {
+                $join->on('buses.id', '=', 'bus_bookings.bus_id')
+                    ->where('bus_bookings.status', '=', 'paid');
+            })
+            ->where('buses.merchant_profile_id', $merchant->id)
+            ->groupBy('buses.id', 'buses.name', 'buses.price_per_seat')
+            ->orderByDesc('total_sold')
+            ->paginate(15);
+
+        $topBuses->getCollection()->transform(function ($bus) {
+            $primaryImage = \App\Models\BusImage::where('bus_id', $bus->id)->where('is_primary', true)->first();
+            $bus->image = $primaryImage ? $primaryImage->image_path : null;
+            $bus->total_sold = (int) $bus->total_sold;
+            return $bus;
+        });
+
+        return $this->apiSuccess('Top buses retrieved successfully', [
+            'top_performers' => $topBuses
         ]);
     }
 }

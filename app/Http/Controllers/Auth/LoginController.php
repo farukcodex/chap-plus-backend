@@ -77,6 +77,15 @@ class LoginController extends Controller
         $userData = $user->only(['id', 'name', 'email', 'email_verified_at', 'google_id', 'profile_photo_url']);
         $userData['role'] = $user->getRoleNames()->first();
 
+        // Attach specific profiles for onboarding checks
+        if ($userData['role'] === 'RIDER' && $user->riderProfile) {
+            $userData['rider_profile'] = $user->riderProfile;
+        }
+
+        if (in_array($userData['role'], ['ECOMMERCE_MERCHANT', 'RESTAURANT_MERCHANT', 'HOTEL_MERCHANT']) && $user->merchantProfile) {
+            $userData['merchant_profile'] = $user->merchantProfile;
+        }
+
         $data = [
             'token_type' => 'Bearer',
             'token' => $token,

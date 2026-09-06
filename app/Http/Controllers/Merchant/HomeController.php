@@ -20,6 +20,7 @@ class HomeController extends Controller
     {
         $merchant = $request->user()->merchantProfile;
         $isHotel = $request->user()->hasRole('HOTEL_MERCHANT');
+        $isBus = $request->user()->hasRole('BUS_MERCHANT');
 
         if (!$merchant) {
             return $this->apiError('Merchant profile not found', 404, ['code' => 'MERCHANT_NOT_FOUND']);
@@ -36,6 +37,8 @@ class HomeController extends Controller
 
         if ($isHotel) {
             return $this->getHotelDashboard($merchant, $startDate, $endDate, $lastMonthStartDate, $lastMonthEndDate);
+        } elseif ($isBus) {
+            return $this->getBusDashboard($merchant, $startDate, $endDate, $lastMonthStartDate, $lastMonthEndDate);
         } else {
             return $this->getEcommerceDashboard($merchant, $startDate, $endDate, $lastMonthStartDate, $lastMonthEndDate);
         }
@@ -159,6 +162,72 @@ class HomeController extends Controller
                     'status' => $booking->status,
                     'created_at' => $booking->created_at,
                     'product_name' => $booking->hotel->name,
+                    'product_image' => $primaryImage ? $primaryImage->image_path : null,
+                ];
+            });
+
+        return $this->apiSuccess('Merchant dashboard retrieved', [
+            'sales' => [
+                'total' => round($currentSales, 2),
+                'growth_percentage' => round($growth, 1),
+                'is_positive' => $growth >= 0,
+            ],
+            'stats' => [
+                'bookings' => $bookingsCount,
+                'properties' => $propertiesCount,
+                'guests' => $guestsCount,
+            ],
+            'recent_activity' => $recentBookings,
+        ]);
+    }
+    private function getBusDashboard($merchant, $startDate, $endDate, $lastMonthStartDate, $lastMonthEndDate)
+    {
+        // 1. Total Revenue (Current Month) - Only paid tickets
+        $currentSales = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)
+            ->where('status', 'paid')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->sum('total_price');
+
+        // 2. Last Month Sales (For Growth %)
+        $lastSales = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)
+            ->where('status', 'paid')
+            ->whereBetween('created_at', [$lastMonthStartDate, $lastMonthEndDate])
+            ->sum('total_price');
+
+        $growth = 0;
+        if ($lastSales > 0) {
+            $growth = (($currentSales - $lastSales) / $lastSales) * 100;
+        } elseif ($currentSales > 0) {
+            $growth = 100;
+        }
+
+        // 3. Stats Counts
+        $bookingsCount = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+
+        $propertiesCount = \App\Models\Bus::where('merchant_profile_id', $merchant->id)->count();
+
+        $guestsCount = \App\Models\BusBooking::where('merchant_profile_id', $merchant->id)
+            ->distinct('user_id')
+            ->count('user_id');
+
+        // 4. Recent Bookings (Latest 5)
+        $recentBookings = \App\Models\BusBooking::with(['bus.images'])
+            ->where('merchant_profile_id', $merchant->id)
+            ->orderBy('created_at', 'desc')
+            ->take(5)
+            ->get()
+            ->map(function ($booking) {
+                $primaryImage = $booking->bus->images->where('is_primary', true)->first();
+                return [
+                    'id' => $booking->id,
+                    'order_number' => '#BKG-' . str_pad($booking->id, 5, '0', STR_PAD_LEFT),
+                    'total_amount' => $booking->total_price,
+                    'items_count' => count($booking->seat_numbers),
+                    'status' => $booking->status,
+                    'created_at' => $booking->created_at,
+                    'product_name' => $booking->bus->name,
                     'product_image' => $primaryImage ? $primaryImage->image_path : null,
                 ];
             });

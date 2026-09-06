@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Seat Selection Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+    <style>
+        .seat { width: 40px; height: 40px; border-radius: 8px; border: 2px solid #E7E9EF; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 12px; font-weight: bold; }
+        .seat.available { background-color: white; color: #4E4E4E; }
+        .seat.available:hover { border-color: #F86B17; }
+        .seat.booked { background-color: #6D717F; border-color: #6D717F; color: white; cursor: not-allowed; }
+        .seat.selected { background-color: #F86B17; border-color: #F86B17; color: white; }
+        .seat.locked { background-color: #A0AEC0; border-color: #A0AEC0; color: white; cursor: not-allowed; opacity: 0.7; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center py-10">
+
+    <div x-data="busBooking()" class="w-full max-w-[402px] bg-white shadow-xl min-h-[800px] relative overflow-hidden">
+        <!-- Header -->
+        <div class="bg-[#5B7410] text-white p-4 flex items-center gap-4 sticky top-0 z-10">
+            <button class="w-8 h-8 rounded-full border border-white/50 flex items-center justify-center">&larr;</button>
+            <h1 class="text-xl font-semibold">Select Seat</h1>
+        </div>
+
+        <div class="p-6">
+            <!-- Legend -->
+            <div class="flex justify-center gap-4 mb-8 text-sm">
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full border border-gray-300 bg-white"></div> Available</div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-[#6D717F]"></div> Booked</div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-[#F86B17]"></div> Selected</div>
+            </div>
+
+            <!-- Steering Wheel & Door -->
+            <div class="flex justify-between items-center mb-8 px-4">
+                <div class="border border-gray-200 rounded-r-full px-6 py-2 text-sm font-semibold">Door</div>
+                <div class="text-4xl">&#9038;</div>
+            </div>
+
+            <!-- Seat Map Grid -->
+            <div class="flex justify-between px-2 mb-2 font-bold text-gray-700">
+                <div class="flex gap-4"><div class="w10 text-center">A</div><div class="w10 text-center">B</div></div>
+                <div></div>
+                <div class="flex gap-4"><div class="w10 text-center">C</div><div class="w10 text-center">D</div></div>
+            </div>
+
+            <div class="space-y-4">
+                <template x-for="(row, rowIndex) in layout" :key="rowIndex">
+                    <div class="flex justify-between items-center">
+                        <!-- Left Seats (A, B) -->
+                        <div class="flex gap-4">
+                            <template x-for="col in ['A', 'B']">
+                                <div>
+                                    <template x-if="getSeat(rowIndex + 1, col)">
+                                        <div 
+                                            @click="toggleSeat(getSeat(rowIndex + 1, col).id)"
+                                            :class="{
+                                                'seat': true,
+                                                'available': getSeat(rowIndex + 1, col).status === 'available' && !selectedSeats.includes(getSeat(rowIndex + 1, col).id),
+                                                'booked': getSeat(rowIndex + 1, col).status === 'booked',
+                                                'locked': getSeat(rowIndex + 1, col).status === 'locked',
+                                                'selected': selectedSeats.includes(getSeat(rowIndex + 1, col).id)
+                                            }"
+                                            x-text="getSeat(rowIndex + 1, col).id"
+                                        ></div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                        
+                        <!-- Aisle Number -->
+                        <div class="font-bold text-gray-400" x-text="rowIndex + 1"></div>
+
+                        <!-- Right Seats (C, D) -->
+                        <div class="flex gap-4">
+                            <template x-for="col in ['C', 'D']">
+                                <div>
+                                    <template x-if="getSeat(rowIndex + 1, col)">
+                                        <div 
+                                            @click="toggleSeat(getSeat(rowIndex + 1, col).id)"
+                                            :class="{
+                                                'seat': true,
+                                                'available': getSeat(rowIndex + 1, col).status === 'available' && !selectedSeats.includes(getSeat(rowIndex + 1, col).id),
+                                                'booked': getSeat(rowIndex + 1, col).status === 'booked',
+                                                'locked': getSeat(rowIndex + 1, col).status === 'locked',
+                                                'selected': selectedSeats.includes(getSeat(rowIndex + 1, col).id)
+                                            }"
+                                            x-text="getSeat(rowIndex + 1, col).id"
+                                        ></div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Footer Checkout -->
+        <div class="sticky bottom-0 bg-white border-t border-gray-200 p-6 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] rounded-t-2xl mt-8">
+            <div class="flex justify-between items-end mb-4">
+                <div>
+                    <p class="text-gray-500 text-sm mb-1">Selected Seat</p>
+                    <p class="font-bold text-gray-800" x-text="selectedSeats.length > 0 ? selectedSeats.join(',') : 'None'"></p>
+                </div>
+                <div class="text-right">
+                    <p class="text-gray-500 text-sm mb-1">Total Amount</p>
+                    <p class="font-bold text-gray-800 text-lg" x-text="'$' + (selectedSeats.length * pricePerSeat).toFixed(2)"></p>
+                </div>
+            </div>
+            <button @click="bookSeats()" class="w-full bg-[#5B7410] text-white py-4 rounded-full font-bold text-lg hover:bg-[#4a5e0d] transition" :disabled="selectedSeats.length === 0" :class="{'opacity-50 cursor-not-allowed': selectedSeats.length === 0}">
+                Confirm Seat
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('busBooking', () => ({
+                busId: 1,
+                travelDate: '2026-10-15',
+                pricePerSeat: 85.00,
+                selectedSeats: [],
+                seats: [],
+                layout: Array.from({ length: 10 }), // 10 rows
+
+                async init() {
+                    // Generate Mock Seats (Instead of real API for this isolated HTML file)
+                    // In a real app, you'd fetch from: /api/bus/1/seat-map?travel_date=2026-10-15
+                    this.generateMockSeats();
+                    this.initReverb();
+                },
+
+                generateMockSeats() {
+                    const columns = ['A', 'B', 'C', 'D'];
+                    for(let r=1; r<=10; r++) {
+                        columns.forEach(c => {
+                            let status = 'available';
+                            if(r === 1 && (c==='A' || c==='C' || c==='D')) status = 'booked';
+                            if(r === 3 && c==='B') status = 'booked';
+                            if(r === 5 && c==='D') status = 'booked';
+                            if(r === 7 && (c==='A' || c==='B')) status = 'booked';
+
+                            this.seats.push({
+                                id: c+r,
+                                status: status
+                            });
+                        });
+                    }
+                },
+
+                getSeat(row, col) {
+                    return this.seats.find(s => s.id === col + row);
+                },
+
+                toggleSeat(seatId) {
+                    const seat = this.seats.find(s => s.id === seatId);
+                    if (!seat || seat.status !== 'available') return;
+
+                    if (this.selectedSeats.includes(seatId)) {
+                        this.selectedSeats = this.selectedSeats.filter(id => id !== seatId);
+                    } else {
+                        this.selectedSeats.push(seatId);
+                    }
+                },
+
+                initReverb() {
+                    // Initialize Pusher directly since Echo requires build step
+                    // These credentials should match your .env REVERB_APP_KEY
+                    const pusher = new Pusher('local', {
+                        wsHost: '127.0.0.1',
+                        wsPort: 8080,
+                        forceTLS: false,
+                        disableStats: true,
+                        cluster: 'mt1'
+                    });
+
+                    const channel = pusher.subscribe(us..);
+
+                    channel.bind('App\\Events\\SeatLockedEvent', (data) => {
+                        console.log('Seats locked by someone else:', data.seats);
+                        data.seats.forEach(seatId => {
+                            const seat = this.seats.find(s => s.id === seatId);
+                            if(seat && seat.status === 'available') {
+                                seat.status = 'locked';
+                                // Remove from our selection if we had it selected
+                                this.selectedSeats = this.selectedSeats.filter(id => id !== seatId);
+                            }
+                        });
+                    });
+
+                    channel.bind('App\\Events\\SeatUnlockedEvent', (data) => {
+                        console.log('Seats unlocked:', data.seats);
+                        data.seats.forEach(seatId => {
+                            const seat = this.seats.find(s => s.id === seatId);
+                            if(seat && seat.status === 'locked') {
+                                seat.status = 'available';
+                            }
+                        });
+                    });
+                },
+
+                async bookSeats() {
+                    if (this.selectedSeats.length === 0) return;
+                    
+                    alert('Booking seats: ' + this.selectedSeats.join(', ') + ' \n\nIn a real app, this calls POST /api/bus/book which locks the seats and fires the SeatLockedEvent to all other users.');
+                    
+                    // Simulate the lock locally for demonstration
+                    this.selectedSeats.forEach(seatId => {
+                        const seat = this.seats.find(s => s.id === seatId);
+                        seat.status = 'booked';
+                    });
+                    this.selectedSeats = [];
+                }
+            }));
+        });
+    </script>
+</body>
+</html>

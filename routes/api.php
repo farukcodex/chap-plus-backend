@@ -73,6 +73,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/bookings/{id}/retry-payment', [\App\Http\Controllers\Customer\HotelBookingController::class, 'retryPayment']);
     });
 
+    // Customer Bus API
+    Route::prefix('buses')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Customer\BusController::class, 'index']);
+        Route::get('/{id}/seat-map', [\App\Http\Controllers\Customer\BusController::class, 'seatMap']);
+        Route::post('/book', [\App\Http\Controllers\Customer\BusController::class, 'initiateBooking']);
+        Route::post('/bookings/{id}/retry-payment', [\App\Http\Controllers\Customer\BusController::class, 'retryPayment']);
+    });
+
     // Customer E-commerce
     Route::prefix('ecommerce')->group(function () {
         Route::get('/home', [\App\Http\Controllers\Customer\EcommerceController::class, 'home']);
@@ -219,6 +227,33 @@ Route::prefix('merchant')->group(function () {
                 Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\HotelBookingController::class, 'updateStatus']);
             });
         });
+
+        // Bus Merchant Routes
+        Route::prefix('bus')->middleware(['role:BUS_MERCHANT'])->group(function () {
+            // Bus Merchant Home Dashboard
+            Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
+            
+            // Bus Merchant Analytics
+            Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
+            Route::get('/analytics/top-performers', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'topProducts']);
+            
+            // Bus Merchant Buses
+            Route::prefix('buses')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Merchant\BusController::class, 'index']);
+                Route::post('/', [\App\Http\Controllers\Merchant\BusController::class, 'store']);
+                Route::get('/{id}', [\App\Http\Controllers\Merchant\BusController::class, 'show']);
+                Route::post('/{id}', [\App\Http\Controllers\Merchant\BusController::class, 'update']); // Use POST with _method=PUT for multipart
+                Route::delete('/{id}', [\App\Http\Controllers\Merchant\BusController::class, 'destroy']);
+                Route::patch('/{id}/status', [\App\Http\Controllers\Merchant\BusController::class, 'updateStatus']);
+                Route::delete('/images/{imageId}', [\App\Http\Controllers\Merchant\BusController::class, 'deleteImage']);
+            });
+
+            // Bus Merchant Bookings
+            Route::prefix('bookings')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Merchant\BusBookingController::class, 'index']);
+                Route::get('/{id}', [\App\Http\Controllers\Merchant\BusBookingController::class, 'show']);
+            });
+        });
     });
 });
 
@@ -275,3 +310,5 @@ Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(functi
         Route::post('/{id}/location', [\App\Http\Controllers\Rider\DeliveryController::class, 'updateLocation']);
     });
 });
+
+

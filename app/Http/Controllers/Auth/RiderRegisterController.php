@@ -25,6 +25,8 @@ class RiderRegisterController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            'country' => 'required|string|size:2|alpha:ascii', 
+            'city' => 'required|string|max:255',
         ]);
 
         try {
@@ -38,9 +40,20 @@ class RiderRegisterController extends Controller
                 // Assign Spatie Role
                 $user->assignRole('RIDER');
 
-                // Create an empty profile to be filled out in the next steps
+                // Auto-detect Currency from Country code
+                try {
+                    $isoData = (new \League\ISO3166\ISO3166)->alpha2($validated['country']);
+                    $currency = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
+                } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
+                    throw new \InvalidArgumentException('INVALID_COUNTRY_CODE');
+                }
+
+                // Create an empty profile to be filled out in the next steps, but pre-fill location
                 RiderProfile::create([
                     'user_id' => $user->id,
+                    'country' => $validated['country'],
+                    'city' => $validated['city'],
+                    'currency' => $currency,
                 ]);
 
                 // Send the OTP Email
@@ -52,6 +65,14 @@ class RiderRegisterController extends Controller
 
                 return $user;
             });
+        } catch (\InvalidArgumentException $e) {
+            if ($e->getMessage() === 'INVALID_COUNTRY_CODE') {
+                return response()->json([
+                    'message' => 'The provided country code is not a valid ISO 3166-1 alpha-2 code.',
+                    'errors' => ['country' => ['Invalid country code.']]
+                ], 422);
+            }
+            return $this->apiError('An error occurred during registration.', 500, ['error' => $e->getMessage()]);
         } catch (RuntimeException $e) {
             return $this->apiError('Unable to send verification code. Please try again later.', 500, [
                 'code' => $e->getMessage(),
