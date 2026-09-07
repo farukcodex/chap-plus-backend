@@ -23,19 +23,25 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email'    => 'required|email',
-            'password' => 'required|string|min:8',
+            'email'           => 'required|email',
+            'password'        => 'required|string|min:8',
+            'expo_push_token' => ['nullable', 'string', 'max:255', 'regex:/^(ExponentPushToken|ExpoPushToken)\[.*\]$/'],
+            'platform'        => 'nullable|string|in:android,ios,web',
+            'device_name'     => 'nullable|string|max:100',
+            'device_id'       => 'nullable|string|max:255',
         ];
     }
 
     public function messages(): array
     {
         return [
-            'email.required'    => 'An email address is required.',
-            'email.email'       => 'Please provide a valid email address.',
+            'email.required'          => 'An email address is required.',
+            'email.email'             => 'Please provide a valid email address.',
 
-            'password.required' => 'A password is required.',
-            'password.min'      => 'The password must be at least 8 characters long.',
+            'password.required'       => 'A password is required.',
+            'password.min'            => 'The password must be at least 8 characters long.',
+
+            'expo_push_token.regex'   => 'The expo push token format is invalid. Expected ExponentPushToken[...] or ExpoPushToken[...]',
         ];
     }
 }

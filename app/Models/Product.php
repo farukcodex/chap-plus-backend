@@ -30,6 +30,11 @@ class Product extends Model
         return $this->belongsTo(ProductCategory::class, 'category_id');
     }
 
+    public function getRootCategory(): ?ProductCategory
+    {
+        return $this->category?->getRootCategory();
+    }
+
     public function images()
     {
         return $this->hasMany(ProductImage::class);

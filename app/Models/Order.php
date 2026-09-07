@@ -9,12 +9,22 @@ class Order extends Model
 {
     use HasFactory;
     protected $fillable = [
-        'user_id', 'merchant_profile_id', 'total_amount', 'delivery_fee', 
+        'order_number', 'user_id', 'merchant_profile_id', 'total_amount', 'delivery_fee', 
         'status', 'user_address_id', 'payment_method', 
         'mpesa_checkout_request_id', 'mpesa_receipt_number',
         'rider_id', 'cancellation_reason', 'rating', 'review_comment',
         'delivery_otp', 'distance_km', 'duration_minute',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function ($order) {
+            if (empty($order->order_number)) {
+                $order->order_number = '#ORD-' . str_pad($order->id, 5, '0', STR_PAD_LEFT);
+                $order->saveQuietly();
+            }
+        });
+    }
 
     public function address()
     {

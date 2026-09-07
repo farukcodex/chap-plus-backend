@@ -89,7 +89,7 @@ class HomeController extends Controller
 
                 return [
                     'id' => $order->id,
-                    'order_number' => '#ORD-' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
+                    'order_number' => $order->order_number ?? ('#ORD-' . str_pad($order->id, 5, '0', STR_PAD_LEFT)),
                     'total_amount' => $order->total_amount,
                     'items_count' => $order->items->sum('quantity'),
                     'status' => $order->status,

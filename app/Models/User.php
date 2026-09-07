@@ -68,4 +68,12 @@ class User extends Authenticatable
     {
         return $this->hasOne(RiderProfile::class);
     }
+
+    /**
+     * Get all active device tokens for the user.
+     */
+    public function deviceTokens()
+    {
+        return $this->hasMany(DeviceToken::class);
+    }
 }

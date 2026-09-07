@@ -27,6 +27,7 @@ class DeliveryController extends Controller
                 $q->select('id', 'business_name', 'address', 'city', 'phone_number', 'latitude', 'longitude', 'currency');
             },
             'items.product.images',
+            'items.product.category.parent',
             'items.variant'
         ]);
 
@@ -75,6 +76,7 @@ class DeliveryController extends Controller
             'merchantProfile',
             'user',
             'items.product.images',
+            'items.product.category.parent',
             'items.variant',
             'address'
         ])->find($id);
@@ -115,7 +117,7 @@ class DeliveryController extends Controller
                 'rider_id' => $riderId,
                 'status'   => 'accepted',
             ]);
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
 
             return $this->apiSuccess('Order accepted successfully', ['order' => $this->formatOrder($order)]);
         }
@@ -129,7 +131,7 @@ class DeliveryController extends Controller
             }
 
             $order->update(['status' => 'picked_up']);
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
 
             return $this->apiSuccess('Order picked up successfully', ['order' => $this->formatOrder($order)]);
         }
@@ -143,7 +145,7 @@ class DeliveryController extends Controller
             }
 
             $order->update(['status' => 'on_the_way']);
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
 
             return $this->apiSuccess('Order is now on the way', ['order' => $this->formatOrder($order)]);
         }
@@ -160,7 +162,7 @@ class DeliveryController extends Controller
                 return $this->apiError('Invalid Delivery PIN', 400, ['code' => 'INVALID_OTP']);
             }
 
-            \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
+            $riderEarnings = \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
                 $order->update(['status' => 'delivered']);
 
                 // 1. Fetch Commission Settings
@@ -221,9 +223,18 @@ class DeliveryController extends Controller
                         'description' => "Delivery fee for Order #{$order->id}",
                     ]);
                 }
+
+                return $riderEarnings;
             });
 
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+
+            // Notify Rider (Database Drawer + Expo Push)
+            try {
+                $request->user()->notify(new \App\Notifications\Rider\DeliveryCompletedNotification($order, (float) $riderEarnings));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Failed sending DeliveryCompletedNotification: ' . $e->getMessage());
+            }
 
             return $this->apiSuccess('Delivery confirmed successfully and wallets updated!', ['order' => $this->formatOrder($order)]);
         }
@@ -277,8 +288,16 @@ class DeliveryController extends Controller
         $isOnTheWay = in_array($order->status, ['on_the_way', 'delivered']);
         $isDelivered = $order->status === 'delivered';
 
+        $firstCategory = $order->items->first()?->product?->category;
+        $orderRootCategory = $firstCategory;
+        while ($orderRootCategory && $orderRootCategory->parent) {
+            $orderRootCategory = $orderRootCategory->parent;
+        }
+
         return [
             'id' => $order->id,
+            'order_number' => $order->order_number ?? ('#ORD-' . str_pad($order->id, 5, '0', STR_PAD_LEFT)),
+            'category' => $orderRootCategory?->name ?? null,
             'status' => $order->status,
             'currency' => $currency,
             'delivery_timeline' => [
@@ -309,14 +328,24 @@ class DeliveryController extends Controller
                 'title' => $order->address->title ?? null,
                 'address_text' => $order->address->address_text ?? null,
                 'phone_number' => $order->address->phone_number ?? null,
-                'latitude' => $order->address->latitude ? (float) $order->address->latitude : null,
-                'longitude' => $order->address->longitude ? (float) $order->address->longitude : null,
+                'latitude' => $order->address?->latitude ? (float) $order->address->latitude : null,
+                'longitude' => $order->address?->longitude ? (float) $order->address->longitude : null,
             ],
             'items' => $order->items->map(function ($item) use ($currency) {
+                $category = $item->product?->category;
+                $rootCategory = $category;
+                while ($rootCategory && $rootCategory->parent) {
+                    $rootCategory = $rootCategory->parent;
+                }
+
+                $hasSubCategory = $category && $rootCategory && $category->id !== $rootCategory->id;
+
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
                     'name' => $item->product->name ?? 'Unknown',
+                    'category' => $rootCategory?->name ?? $category?->name ?? null,
+                    'sub_category' => $hasSubCategory ? $category->name : null,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->price_at_time_of_purchase,
                     'total_price' => round((float) $item->price_at_time_of_purchase * $item->quantity, 2),

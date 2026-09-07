@@ -59,6 +59,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/payouts', [\App\Http\Controllers\WalletController::class, 'payouts']);
     });
 
+    // Device Push Token (Expo) - Shared for Customer, Rider, Merchant, Admin
+    Route::post('/push-token', [\App\Http\Controllers\NotificationController::class, 'updatePushToken']);
+    Route::delete('/push-token', [\App\Http\Controllers\NotificationController::class, 'removePushToken']);
+
+    // Notifications Inbox - Shared for Customer, Rider, Merchant, Admin
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [\App\Http\Controllers\NotificationController::class, 'index']);
+        Route::post('/{id}/read', [\App\Http\Controllers\NotificationController::class, 'markAsRead']);
+        Route::post('/read-all', [\App\Http\Controllers\NotificationController::class, 'markAllAsRead']);
+        Route::delete('/{id}', [\App\Http\Controllers\NotificationController::class, 'destroy']);
+    });
+
     // Customer Hotel API
     Route::prefix('hotel')->group(function () {
         Route::get('/properties', [\App\Http\Controllers\Customer\HotelController::class, 'index']);
@@ -161,7 +173,7 @@ Route::prefix('merchant')->group(function () {
             Route::get('/products', [\App\Http\Controllers\Merchant\ProductController::class, 'index']);
             Route::post('/products', [\App\Http\Controllers\Merchant\ProductController::class, 'store']);
             Route::get('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'show']);
-            Route::put('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'update']);
+            Route::patch('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'update']);
             Route::delete('/products/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'destroy']);
             Route::patch('/products/{id}/status', [\App\Http\Controllers\Merchant\ProductController::class, 'updateStatus']);
 
@@ -186,7 +198,7 @@ Route::prefix('merchant')->group(function () {
             Route::get('/foods', [\App\Http\Controllers\Merchant\ProductController::class, 'index']);
             Route::post('/foods', [\App\Http\Controllers\Merchant\ProductController::class, 'store']);
             Route::get('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'show']);
-            Route::put('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'update']);
+            Route::patch('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'update']);
             Route::delete('/foods/{id}', [\App\Http\Controllers\Merchant\ProductController::class, 'destroy']);
             Route::patch('/foods/{id}/status', [\App\Http\Controllers\Merchant\ProductController::class, 'updateStatus']);
 
@@ -309,3 +321,4 @@ Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(functi
         Route::post('/{id}/location', [\App\Http\Controllers\Rider\DeliveryController::class, 'updateLocation']);
     });
 });
+

@@ -6,6 +6,7 @@ use App\Traits\ApiResponseTrait;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\DeviceToken;
 use App\Models\User;
 use App\Services\OtpService;
 use App\Support\SubscriptionEntitlements;
@@ -74,6 +75,20 @@ class LoginController extends Controller
         // Create usertoken. also save the device name
         $token = $user->createToken($request->device_name ?? 'web')->plainTextToken;
 
+        // If expo_push_token is provided during login, register or update device token
+        if ($request->filled('expo_push_token')) {
+            DeviceToken::updateOrCreate(
+                ['token' => trim($request->expo_push_token)],
+                [
+                    'user_id'      => $user->id,
+                    'platform'     => $request->platform,
+                    'device_name'  => $request->device_name,
+                    'device_id'    => $request->device_id,
+                    'last_used_at' => now(),
+                ]
+            );
+        }
+
         $userData = $user->only(['id', 'name', 'email', 'email_verified_at', 'google_id', 'profile_photo_url']);
         $userData['role'] = $user->getRoleNames()->first();
 
@@ -124,6 +139,20 @@ class LoginController extends Controller
 
         // Create usertoken.
         $token = $user->createToken('admin-token')->plainTextToken;
+
+        // If expo_push_token is provided during admin login, register or update device token
+        if ($request->filled('expo_push_token')) {
+            DeviceToken::updateOrCreate(
+                ['token' => trim($request->expo_push_token)],
+                [
+                    'user_id'      => $user->id,
+                    'platform'     => $request->platform,
+                    'device_name'  => $request->device_name,
+                    'device_id'    => $request->device_id,
+                    'last_used_at' => now(),
+                ]
+            );
+        }
 
         $userData = $user->only(['id', 'name', 'email']);
         $userData['profile_photo_url'] = $user->profile_photo_url;

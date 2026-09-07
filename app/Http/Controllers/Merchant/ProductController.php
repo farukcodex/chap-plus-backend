@@ -178,11 +178,15 @@ class ProductController extends Controller
     }
 
     /**
-     * Update an existing product and its variants.
+     * Update an existing product and its variants (supports full PUT or partial PATCH).
      */
     public function update(Request $request, string $id): JsonResponse
     {
         $merchantProfile = $request->user()->merchantProfile;
+
+        if (!$merchantProfile) {
+            return $this->apiError('Merchant profile not found', 404);
+        }
 
         $product = Product::where('merchant_profile_id', $merchantProfile->id)->find($id);
 
@@ -191,26 +195,26 @@ class ProductController extends Controller
         }
 
         $validated = $request->validate([
-            'category_id' => 'required|exists:product_categories,id',
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'base_price' => 'required|numeric|min:0',
-            'discount_price' => 'nullable|numeric|min:0',
-            'unit_type' => 'required|string|max:50',
-            'unit_value' => 'nullable|numeric|min:0',
-            'has_variants' => 'required|boolean',
-            'is_active' => 'required|boolean',
+            'category_id'      => 'sometimes|required|exists:product_categories,id',
+            'name'             => 'sometimes|required|string|max:255',
+            'description'      => 'nullable|string',
+            'base_price'       => 'sometimes|required|numeric|min:0',
+            'discount_price'   => 'nullable|numeric|min:0',
+            'unit_type'        => 'sometimes|required|string|max:50',
+            'unit_value'       => 'nullable|numeric|min:0',
+            'has_variants'     => 'sometimes|required|boolean',
+            'is_active'        => 'sometimes|required|boolean',
 
             // Images to append and delete
-            'images' => 'nullable|array',
-            'images.*' => 'image|max:5120',
+            'images'           => 'nullable|array',
+            'images.*'         => 'image|max:5120',
             'images_to_delete' => 'nullable|array',
             'images_to_delete.*' => 'integer|exists:product_images,id',
 
-            // Variants
-            'variants' => 'required|array',
-            'variants.*.id' => 'nullable|integer', // To identify existing variants
-            'variants.*.sku' => 'nullable|string|max:100',
+            // Variants (only required if variants is provided)
+            'variants'         => 'sometimes|required|array',
+            'variants.*.id'    => 'nullable|integer', // To identify existing variants
+            'variants.*.sku'   => 'nullable|string|max:100',
             'variants.*.attributes' => 'nullable|array',
             'variants.*.price_adjustment' => 'nullable|numeric',
             'variants.*.stock_quantity' => 'required|integer|min:0',
@@ -219,60 +223,69 @@ class ProductController extends Controller
         try {
             DB::beginTransaction();
 
-            $product->update([
-                'category_id' => $validated['category_id'],
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'base_price' => $validated['base_price'],
-                'discount_price' => $validated['discount_price'] ?? null,
-                'unit_type' => $validated['unit_type'],
-                'unit_value' => $validated['unit_value'] ?? null,
-                'has_variants' => $validated['has_variants'],
-                'is_active' => $validated['is_active'],
-            ]);
+            $updatableFields = [
+                'category_id',
+                'name',
+                'description',
+                'base_price',
+                'discount_price',
+                'unit_type',
+                'unit_value',
+                'has_variants',
+                'is_active',
+            ];
 
-            // Sync Variants
-            $providedVariantIds = [];
-            foreach ($validated['variants'] as $v) {
-                if (isset($v['id']) && $v['id']) {
-                    // Update existing variant
-                    $variant = ProductVariant::where('product_id', $product->id)->find($v['id']);
-                    if ($variant) {
-                        $variant->update([
-                            'sku' => $v['sku'] ?? null,
-                            'attributes' => $v['attributes'] ?? null,
-                            'price_adjustment' => $v['price_adjustment'] ?? 0.00,
-                            'stock_quantity' => $v['stock_quantity'],
-                        ]);
-                        $providedVariantIds[] = $variant->id;
-                    }
-                } else {
-                    // Create new variant
-                    $newVariant = ProductVariant::create([
-                        'product_id' => $product->id,
-                        'sku' => $v['sku'] ?? null,
-                        'attributes' => $v['attributes'] ?? null,
-                        'price_adjustment' => $v['price_adjustment'] ?? 0.00,
-                        'stock_quantity' => $v['stock_quantity'],
-                    ]);
-                    $providedVariantIds[] = $newVariant->id;
+            $fieldsToUpdate = [];
+            foreach ($updatableFields as $field) {
+                if (array_key_exists($field, $validated)) {
+                    $fieldsToUpdate[$field] = $validated[$field];
                 }
             }
 
-            // Remove any old variants not provided in this payload (only if they aren't tied to orders)
-            // Wait, to be safe, if we just delete them, it might cascade and delete order_items.
-            // Ideally we'd soft delete. But since we lack soft deletes, we'll try to delete, 
-            // and if it fails (due to foreign key constraint), we'll ignore it.
-            $orphanedVariants = ProductVariant::where('product_id', $product->id)
-                ->whereNotIn('id', $providedVariantIds)
-                ->get();
+            if (!empty($fieldsToUpdate)) {
+                $product->update($fieldsToUpdate);
+            }
 
-            foreach ($orphanedVariants as $orphan) {
-                try {
-                    $orphan->delete();
-                } catch (Exception $e) {
-                    // Fallback: If it's tied to an order and can't be deleted, just set stock to 0 so it acts inactive
-                    $orphan->update(['stock_quantity' => 0]);
+            // Sync Variants only if 'variants' was provided in the request
+            if (isset($validated['variants'])) {
+                $providedVariantIds = [];
+                foreach ($validated['variants'] as $v) {
+                    if (isset($v['id']) && $v['id']) {
+                        // Update existing variant
+                        $variant = ProductVariant::where('product_id', $product->id)->find($v['id']);
+                        if ($variant) {
+                            $variant->update([
+                                'sku'              => $v['sku'] ?? null,
+                                'attributes'       => $v['attributes'] ?? null,
+                                'price_adjustment' => $v['price_adjustment'] ?? 0.00,
+                                'stock_quantity'   => $v['stock_quantity'],
+                            ]);
+                            $providedVariantIds[] = $variant->id;
+                        }
+                    } else {
+                        // Create new variant
+                        $newVariant = ProductVariant::create([
+                            'product_id'       => $product->id,
+                            'sku'              => $v['sku'] ?? null,
+                            'attributes'       => $v['attributes'] ?? null,
+                            'price_adjustment' => $v['price_adjustment'] ?? 0.00,
+                            'stock_quantity'   => $v['stock_quantity'],
+                        ]);
+                        $providedVariantIds[] = $newVariant->id;
+                    }
+                }
+
+                // Remove any old variants not provided in this payload (only if they aren't tied to orders)
+                $orphanedVariants = ProductVariant::where('product_id', $product->id)
+                    ->whereNotIn('id', $providedVariantIds)
+                    ->get();
+
+                foreach ($orphanedVariants as $orphan) {
+                    try {
+                        $orphan->delete();
+                    } catch (Exception $e) {
+                        $orphan->update(['stock_quantity' => 0]);
+                    }
                 }
             }
 
@@ -306,6 +319,8 @@ class ProductController extends Controller
             }
 
             DB::commit();
+
+            $product->load(['images', 'variants']);
 
             return $this->apiSuccess('Product updated successfully', ['product' => $product]);
         } catch (Exception $e) {

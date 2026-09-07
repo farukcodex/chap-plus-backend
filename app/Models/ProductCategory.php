@@ -30,4 +30,13 @@ class ProductCategory extends Model
     {
         return $this->hasMany(ProductCategory::class, 'parent_id');
     }
+
+    public function getRootCategory(): ProductCategory
+    {
+        $current = $this;
+        while ($current->parent) {
+            $current = $current->parent;
+        }
+        return $current;
+    }
 }
