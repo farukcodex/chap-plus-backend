@@ -78,8 +78,8 @@ class OrderController extends Controller
             return $this->apiError('You can only mark an order as ready if it is currently "processing".', 400);
         }
 
-        if ($validated['status'] === 'cancelled' && in_array($order->status, ['on_the_way', 'delivered'])) {
-            return $this->apiError('You cannot cancel an order that is already on the way or delivered.', 400);
+        if ($validated['status'] === 'cancelled' && in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered'])) {
+            return $this->apiError('You cannot cancel an order that is already accepted, picked up, on the way, or delivered.', 400);
         }
 
         $order->update(['status' => $validated['status']]);

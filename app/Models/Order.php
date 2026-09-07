@@ -13,7 +13,7 @@ class Order extends Model
         'status', 'user_address_id', 'payment_method', 
         'mpesa_checkout_request_id', 'mpesa_receipt_number',
         'rider_id', 'cancellation_reason', 'rating', 'review_comment',
-        'delivery_otp',
+        'delivery_otp', 'distance_km', 'duration_minute',
     ];
 
     public function address()

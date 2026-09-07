@@ -21,7 +21,7 @@ class OrderController extends Controller
             ->where('user_id', $request->user()->id);
 
         if ($filter === 'active') {
-            $query->whereIn('status', ['pending_payment', 'failed', 'paid', 'processing', 'on_the_way']);
+            $query->whereIn('status', ['pending_payment', 'failed', 'paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way']);
         } elseif ($filter === 'completed') {
             $query->where('status', 'delivered');
         } elseif ($filter === 'cancelled') {
@@ -46,7 +46,7 @@ class OrderController extends Controller
         $orderData = $order->toArray();
         $orderData['live_location'] = null;
 
-        if ($order->status === 'on_the_way') {
+        if (in_array($order->status, ['picked_up', 'on_the_way'])) {
             $orderData['live_location'] = \Illuminate\Support\Facades\Cache::get('order_' . $order->id . '_location');
         }
 
@@ -110,10 +110,13 @@ class OrderController extends Controller
             return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
-        // Fake timeline data for the UI
+        // Timeline data for the UI
         $timeline = [
-            'order_confirmed' => in_array($order->status, ['paid', 'processing', 'on_the_way', 'delivered']),
-            'preparing' => in_array($order->status, ['processing', 'on_the_way', 'delivered']),
+            'order_confirmed' => in_array($order->status, ['paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'preparing' => in_array($order->status, ['processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'ready_for_pickup' => in_array($order->status, ['ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'accepted' => in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'picked_up' => in_array($order->status, ['picked_up', 'on_the_way', 'delivered']),
             'on_the_way' => in_array($order->status, ['on_the_way', 'delivered']),
             'delivered' => $order->status === 'delivered',
         ];

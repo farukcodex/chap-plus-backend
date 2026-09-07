@@ -30,6 +30,8 @@ return new class extends Migration
             
             // Delivery
             $table->string('delivery_otp', 10)->nullable();
+            $table->decimal('distance_km', 8, 2)->nullable();
+            $table->unsignedInteger('duration_minute')->nullable();
             
             // Tracking & Reviews
             $table->foreignId('rider_id')->nullable()->constrained('users')->nullOnDelete();

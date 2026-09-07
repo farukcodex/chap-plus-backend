@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Rider;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Rider\DeliveryIndexRequest;
+use App\Http\Requests\Rider\UpdateDeliveryStatusRequest;
 use Illuminate\Http\Request;
-
 use App\Models\Order;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
@@ -13,20 +14,8 @@ class DeliveryController extends Controller
 {
     use ApiResponseTrait;
 
-    public function index(Request $request): JsonResponse
+    public function index(DeliveryIndexRequest $request): JsonResponse
     {
-        $request->validate([
-            'type' => [
-                'nullable',
-                'string',
-                function ($attribute, $value, $fail) {
-                    if (!in_array(strtolower($value), ['ecommerce', 'restaurant'])) {
-                        $fail('The type must be either ecommerce or restaurant.');
-                    }
-                },
-            ],
-        ]);
-
         $riderId = $request->user()->id;
         $filter = $request->query('filter', 'all'); // available, active, or completed
         $perPage = $request->query('per_page', 15);
@@ -35,7 +24,7 @@ class DeliveryController extends Controller
             'address',
             'user:id,name',
             'merchantProfile' => function ($q) {
-                $q->select('id', 'business_name', 'address', 'city', 'phone_number', 'latitude', 'longitude');
+                $q->select('id', 'business_name', 'address', 'city', 'phone_number', 'latitude', 'longitude', 'currency');
             },
             'items.product.images',
             'items.variant'
@@ -44,6 +33,12 @@ class DeliveryController extends Controller
         if ($filter === 'ready_for_pickup') {
             // Global: ready for pickup, no rider assigned
             $query->where('status', 'ready_for_pickup')->whereNull('rider_id');
+        } elseif ($filter === 'accepted') {
+            // Personal: accepted by this rider
+            $query->where('rider_id', $riderId)->where('status', 'accepted');
+        } elseif ($filter === 'picked_up') {
+            // Personal: picked up by this rider
+            $query->where('rider_id', $riderId)->where('status', 'picked_up');
         } elseif ($filter === 'on_the_way') {
             // Personal: currently being delivered by this rider
             $query->where('rider_id', $riderId)->where('status', 'on_the_way');
@@ -55,21 +50,21 @@ class DeliveryController extends Controller
             $query->where('rider_id', $riderId);
         } else {
             // Personal: active (assigned to this rider but not yet delivered)
-            $query->where('rider_id', $riderId)->whereIn('status', ['ready_for_pickup', 'on_the_way']);
+            $query->where('rider_id', $riderId)->whereIn('status', ['ready_for_pickup', 'accepted', 'picked_up', 'on_the_way']);
         }
 
-        if ($type = $request->query('type')) {
-            $normalizedType = strtolower($type);
-            $query->whereHas('items.product.category', function ($q) use ($normalizedType) {
-                $q->where('type', $normalizedType)
-                  ->orWhereHas('parent', function ($pq) use ($normalizedType) {
-                      $pq->where('type', $normalizedType);
+        if ($type = $request->input('type')) {
+            $query->whereHas('items.product.category', function ($q) use ($type) {
+                $q->where('type', $type)
+                  ->orWhereHas('parent', function ($pq) use ($type) {
+                      $pq->where('type', $type);
                   });
             });
         }
 
+        $commissionPercent = (float) (\App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.0);
         $orders = $query->latest()->paginate($perPage);
-        $orders->through(fn ($order) => $this->formatOrder($order));
+        $orders->through(fn ($order) => $this->formatOrder($order, $commissionPercent));
 
         return $this->apiSuccess('Deliveries retrieved', ['orders' => $orders]);
     }
@@ -99,116 +94,141 @@ class DeliveryController extends Controller
         return $this->apiSuccess('Delivery details retrieved', ['order' => $this->formatOrder($order)]);
     }
 
-    public function accept(string $id, Request $request): JsonResponse
+    public function updateStatus(string $id, UpdateDeliveryStatusRequest $request): JsonResponse
     {
-        $order = Order::where('status', 'ready_for_pickup')->whereNull('rider_id')->find($id);
+        $status = $request->status;
+        $riderId = $request->user()->id;
 
-        if (!$order) {
-            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
-        }
+        // 1. Accept Order
+        if ($status === 'accepted') {
+            $order = Order::where('status', 'ready_for_pickup')->whereNull('rider_id')->find($id);
 
-        if ($order->status !== 'ready_for_pickup') {
-            return $this->apiError('Order is no longer available', 400, ['code' => 'ORDER_UNAVAILABLE']);
-        }
-
-        $order->update([
-            'rider_id' => $request->user()->id,
-        ]);
-        $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
-
-        return $this->apiSuccess('Order accepted successfully', ['order' => $this->formatOrder($order)]);
-    }
-
-    public function pickup(string $id, Request $request): JsonResponse
-    {
-        $order = Order::where('rider_id', $request->user()->id)->where('status', 'ready_for_pickup')->find($id);
-
-        if (!$order) {
-            return $this->apiError('Invalid order or status for pickup', 400, ['code' => 'INVALID_ORDER_STATUS']);
-        }
-
-        $order->update(['status' => 'on_the_way']);
-        $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
-
-        return $this->apiSuccess('Order picked up successfully', ['order' => $this->formatOrder($order)]);
-    }
-
-    public function deliver(string $id, Request $request): JsonResponse
-    {
-        $request->validate(['otp' => 'required|string']);
-
-        $order = Order::with('merchantProfile')->where('rider_id', $request->user()->id)->where('status', 'on_the_way')->find($id);
-
-        if (!$order) {
-            return $this->apiError('Invalid order or status for delivery', 400, ['code' => 'INVALID_ORDER_STATUS']);
-        }
-
-        if ($order->delivery_otp !== $request->otp) {
-            return $this->apiError('Invalid Delivery PIN', 400, ['code' => 'INVALID_OTP']);
-        }
-
-        \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
-            $order->update(['status' => 'delivered']);
-
-            // 1. Fetch Commission Settings
-            $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
-            $riderCommissionPercent = \App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.00;
-
-            $totalAmount = $order->total_amount;
-            $deliveryFee = $order->delivery_fee ?? 0;
-
-            // Calculate splits
-            $adminMerchantCommission = $totalAmount * ($merchantCommissionPercent / 100);
-            $merchantEarnings = $totalAmount - $adminMerchantCommission;
-
-            $adminRiderCommission = $deliveryFee * ($riderCommissionPercent / 100);
-            $riderEarnings = $deliveryFee - $adminRiderCommission;
-
-            $totalAdminCommission = $adminMerchantCommission + $adminRiderCommission;
-
-            // 2. Admin Wallet
-            $adminUser = \App\Models\User::role('ADMIN')->first();
-            if ($adminUser) {
-                $adminWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $adminUser->id]);
-                $adminWallet->increment('balance', $totalAdminCommission);
-                \App\Models\WalletTransaction::create([
-                    'wallet_id' => $adminWallet->id,
-                    'type' => 'credit',
-                    'amount' => $totalAdminCommission,
-                    'reference_type' => \App\Models\Order::class,
-                    'reference_id' => $order->id,
-                    'description' => "Platform commission for Order #{$order->id}",
-                ]);
+            if (!$order) {
+                $existing = Order::find($id);
+                if (!$existing) {
+                    return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
+                }
+                return $this->apiError('Order is no longer available', 400, ['code' => 'ORDER_UNAVAILABLE']);
             }
 
-            // 3. Merchant Wallet
-            $merchantWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $order->merchantProfile->user_id]);
-            $merchantWallet->increment('balance', $merchantEarnings);
-            \App\Models\WalletTransaction::create([
-                'wallet_id' => $merchantWallet->id,
-                'type' => 'credit',
-                'amount' => $merchantEarnings,
-                'reference_type' => \App\Models\Order::class,
-                'reference_id' => $order->id,
-                'description' => "Earnings for Order #{$order->id}",
+            $order->update([
+                'rider_id' => $riderId,
+                'status'   => 'accepted',
             ]);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
 
-            // 4. Rider Wallet
-            $riderWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $order->rider_id]);
-            $riderWallet->increment('balance', $riderEarnings);
-            \App\Models\WalletTransaction::create([
-                'wallet_id' => $riderWallet->id,
-                'type' => 'credit',
-                'amount' => $riderEarnings,
-                'reference_type' => \App\Models\Order::class,
-                'reference_id' => $order->id,
-                'description' => "Delivery fee for Order #{$order->id}",
-            ]);
-        });
+            return $this->apiSuccess('Order accepted successfully', ['order' => $this->formatOrder($order)]);
+        }
 
-        $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+        // 2. Pickup Order
+        if ($status === 'picked_up') {
+            $order = Order::where('rider_id', $riderId)->whereIn('status', ['accepted', 'ready_for_pickup'])->find($id);
 
-        return $this->apiSuccess('Delivery confirmed successfully and wallets updated!', ['order' => $this->formatOrder($order)]);
+            if (!$order) {
+                return $this->apiError('Invalid order or status for pickup', 400, ['code' => 'INVALID_ORDER_STATUS']);
+            }
+
+            $order->update(['status' => 'picked_up']);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+
+            return $this->apiSuccess('Order picked up successfully', ['order' => $this->formatOrder($order)]);
+        }
+
+        // 3. Mark On The Way
+        if ($status === 'on_the_way') {
+            $order = Order::where('rider_id', $riderId)->where('status', 'picked_up')->find($id);
+
+            if (!$order) {
+                return $this->apiError('Invalid order or status for on the way', 400, ['code' => 'INVALID_ORDER_STATUS']);
+            }
+
+            $order->update(['status' => 'on_the_way']);
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+
+            return $this->apiSuccess('Order is now on the way', ['order' => $this->formatOrder($order)]);
+        }
+
+        // 4. Complete Delivery
+        if ($status === 'delivered') {
+            $order = Order::with('merchantProfile')->where('rider_id', $riderId)->whereIn('status', ['picked_up', 'on_the_way'])->find($id);
+
+            if (!$order) {
+                return $this->apiError('Invalid order or status for delivery', 400, ['code' => 'INVALID_ORDER_STATUS']);
+            }
+
+            if ($order->delivery_otp !== $request->otp) {
+                return $this->apiError('Invalid Delivery PIN', 400, ['code' => 'INVALID_OTP']);
+            }
+
+            \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
+                $order->update(['status' => 'delivered']);
+
+                // 1. Fetch Commission Settings
+                $merchantCommissionPercent = (float) (\App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00);
+                $riderCommissionPercent = (float) (\App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.00);
+
+                $totalAmount = (float) $order->total_amount;
+                $deliveryFee = (float) ($order->delivery_fee ?? 0);
+
+                // Calculate splits
+                $adminMerchantCommission = $totalAmount * ($merchantCommissionPercent / 100);
+                $merchantEarnings = $totalAmount - $adminMerchantCommission;
+
+                $adminRiderCommission = $deliveryFee * ($riderCommissionPercent / 100);
+                $riderEarnings = $deliveryFee - $adminRiderCommission;
+
+                $totalAdminCommission = $adminMerchantCommission + $adminRiderCommission;
+
+                // 2. Admin Wallet
+                $adminUser = \App\Models\User::role('ADMIN')->first();
+                if ($adminUser) {
+                    $adminWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $adminUser->id]);
+                    $adminWallet->increment('balance', $totalAdminCommission);
+                    \App\Models\WalletTransaction::create([
+                        'wallet_id' => $adminWallet->id,
+                        'type' => 'credit',
+                        'amount' => $totalAdminCommission,
+                        'reference_type' => \App\Models\Order::class,
+                        'reference_id' => $order->id,
+                        'description' => "Platform commission for Order #{$order->id}",
+                    ]);
+                }
+
+                // 3. Merchant Wallet
+                if ($order->merchantProfile && $order->merchantProfile->user_id) {
+                    $merchantWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $order->merchantProfile->user_id]);
+                    $merchantWallet->increment('balance', $merchantEarnings);
+                    \App\Models\WalletTransaction::create([
+                        'wallet_id' => $merchantWallet->id,
+                        'type' => 'credit',
+                        'amount' => $merchantEarnings,
+                        'reference_type' => \App\Models\Order::class,
+                        'reference_id' => $order->id,
+                        'description' => "Earnings for Order #{$order->id}",
+                    ]);
+                }
+
+                // 4. Rider Wallet
+                if ($order->rider_id) {
+                    $riderWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $order->rider_id]);
+                    $riderWallet->increment('balance', $riderEarnings);
+                    \App\Models\WalletTransaction::create([
+                        'wallet_id' => $riderWallet->id,
+                        'type' => 'credit',
+                        'amount' => $riderEarnings,
+                        'reference_type' => \App\Models\Order::class,
+                        'reference_id' => $order->id,
+                        'description' => "Delivery fee for Order #{$order->id}",
+                    ]);
+                }
+            });
+
+            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+
+            return $this->apiSuccess('Delivery confirmed successfully and wallets updated!', ['order' => $this->formatOrder($order)]);
+        }
+
+        return $this->apiError('Invalid status transition', 400);
     }
 
     public function updateLocation(string $id, Request $request): JsonResponse
@@ -218,7 +238,7 @@ class DeliveryController extends Controller
             'longitude' => 'required|numeric',
         ]);
 
-        $order = Order::where('rider_id', $request->user()->id)->where('status', 'on_the_way')->find($id);
+        $order = Order::where('rider_id', $request->user()->id)->whereIn('status', ['picked_up', 'on_the_way'])->find($id);
 
         if (!$order) {
             return $this->apiError('Order is not currently active for tracking', 400, ['code' => 'INVALID_ORDER_STATUS']);
@@ -240,12 +260,39 @@ class DeliveryController extends Controller
     /**
      * Format the order for optimal mobile rider experience.
      */
-    private function formatOrder(Order $order): array
+    private function formatOrder(Order $order, ?float $commissionPercent = null): array
     {
+        $currency = $order->currency ?? $order->merchantProfile->currency ?? 'USD';
+
+        if (is_null($commissionPercent)) {
+            $commissionPercent = (float) (\App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.0);
+        }
+
+        $deliveryFee = (float) ($order->delivery_fee ?? 0);
+        $commissionAmount = round($deliveryFee * ($commissionPercent / 100), 2);
+        $riderEarnings = round($deliveryFee - $commissionAmount, 2);
+
+        $isAccepted = !is_null($order->rider_id) || in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered']);
+        $isPickedUp = in_array($order->status, ['picked_up', 'on_the_way', 'delivered']);
+        $isOnTheWay = in_array($order->status, ['on_the_way', 'delivered']);
+        $isDelivered = $order->status === 'delivered';
+
         return [
             'id' => $order->id,
             'status' => $order->status,
-            'delivery_fee' => (float) $order->delivery_fee,
+            'currency' => $currency,
+            'delivery_timeline' => [
+                'accepted' => (bool) $isAccepted,
+                'picked_up' => (bool) $isPickedUp,
+                'on_the_way' => (bool) $isOnTheWay,
+                'delivered' => (bool) $isDelivered,
+            ],
+            'delivery_fee' => $deliveryFee,
+            'rider_earnings' => $riderEarnings,
+            'commission_amount' => $commissionAmount,
+            'commission_percent' => $commissionPercent,
+            'distance_km' => $order->distance_km !== null ? (float) $order->distance_km : null,
+            'duration_minute' => $order->duration_minute !== null ? (int) $order->duration_minute : null,
             'total_amount' => (float) $order->total_amount,
             'payment_method' => $order->payment_method,
             'total_items' => (int) $order->items->sum('quantity'),
@@ -265,7 +312,7 @@ class DeliveryController extends Controller
                 'latitude' => $order->address->latitude ? (float) $order->address->latitude : null,
                 'longitude' => $order->address->longitude ? (float) $order->address->longitude : null,
             ],
-            'items' => $order->items->map(function ($item) {
+            'items' => $order->items->map(function ($item) use ($currency) {
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
@@ -273,6 +320,7 @@ class DeliveryController extends Controller
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->price_at_time_of_purchase,
                     'total_price' => round((float) $item->price_at_time_of_purchase * $item->quantity, 2),
+                    'currency' => $currency,
                     'variant' => $item->variant ? [
                         'id' => $item->variant->id,
                         'name' => $item->variant->name,

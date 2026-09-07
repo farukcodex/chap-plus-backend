@@ -9,6 +9,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\MpesaService;
+use App\Services\DistanceService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -19,10 +20,12 @@ class CheckoutController extends Controller
     use ApiResponseTrait;
 
     protected $mpesaService;
+    protected $distanceService;
 
-    public function __construct(MpesaService $mpesaService)
+    public function __construct(MpesaService $mpesaService, DistanceService $distanceService)
     {
         $this->mpesaService = $mpesaService;
+        $this->distanceService = $distanceService;
     }
 
     public function processCheckout(Request $request): JsonResponse
@@ -65,6 +68,13 @@ class CheckoutController extends Controller
                 $total += ($price * $item->quantity);
             }
 
+            $distanceData = $this->distanceService->calculate(
+                $merchantProfile->latitude ? (float) $merchantProfile->latitude : null,
+                $merchantProfile->longitude ? (float) $merchantProfile->longitude : null,
+                $userAddress->latitude ? (float) $userAddress->latitude : null,
+                $userAddress->longitude ? (float) $userAddress->longitude : null
+            );
+
             $order = Order::create([
                 'user_id' => $user->id,
                 'merchant_profile_id' => $merchantId,
@@ -74,6 +84,8 @@ class CheckoutController extends Controller
                 'payment_method' => 'mpesa',
                 'status' => 'pending_payment',
                 'delivery_otp' => (string) random_int(1000, 9999),
+                'distance_km' => $distanceData['distance_km'] ?? null,
+                'duration_minute' => $distanceData['duration_minute'] ?? null,
             ]);
 
             foreach ($cart->items as $item) {

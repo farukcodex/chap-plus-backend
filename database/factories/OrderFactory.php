@@ -22,6 +22,8 @@ class OrderFactory extends Factory
             'user_address_id' => \App\Models\UserAddress::factory(),
             'payment_method' => 'mpesa',
             'delivery_otp' => '1234',
+            'distance_km' => fake()->randomFloat(2, 1.5, 12.0),
+            'duration_minute' => fake()->numberBetween(8, 35),
             'rider_id' => null,
         ];
     }

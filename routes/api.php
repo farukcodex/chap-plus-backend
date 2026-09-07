@@ -17,6 +17,7 @@ use App\Http\Controllers\Merchant\OnboardingController;
 | Auth routes
 |--------------------------------------------------------------------------
 */
+
 Route::prefix('auth')->group(function () {
 
     Route::post('/register', [UserRegisterController::class, 'store']);
@@ -63,10 +64,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/properties', [\App\Http\Controllers\Customer\HotelController::class, 'index']);
         Route::get('/properties/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'show']);
         Route::post('/properties/{id}/reviews', [\App\Http\Controllers\Customer\HotelController::class, 'addReview']);
-        
+
         Route::get('/hosts', [\App\Http\Controllers\Customer\HotelController::class, 'hosts']);
         Route::get('/hosts/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'hostDetails']);
-        
+
         Route::post('/bookings', [\App\Http\Controllers\Customer\HotelBookingController::class, 'book']);
         Route::get('/bookings', [\App\Http\Controllers\Customer\HotelBookingController::class, 'index']);
         Route::get('/bookings/{id}', [\App\Http\Controllers\Customer\HotelBookingController::class, 'show']);
@@ -88,7 +89,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/products', [\App\Http\Controllers\Customer\EcommerceController::class, 'index']);
         Route::get('/products/{id}', [\App\Http\Controllers\Customer\EcommerceController::class, 'show']);
         Route::post('/products/{id}/reviews', [\App\Http\Controllers\Customer\EcommerceController::class, 'addReview']);
-        
+
         Route::get('/stores', [\App\Http\Controllers\Customer\EcommerceController::class, 'stores']);
         Route::get('/stores/{id}', [\App\Http\Controllers\Customer\EcommerceController::class, 'storeDetails']);
 
@@ -150,10 +151,10 @@ Route::prefix('auth/admin')->group(function () {
 
 Route::prefix('merchant')->group(function () {
     Route::post('/register', [OnboardingController::class, 'register']);
-    
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/profile', [OnboardingController::class, 'setupProfile']);
-        
+
         // E-commerce Merchant Routes
         Route::prefix('ecommerce')->middleware(['role:ECOMMERCE_MERCHANT'])->group(function () {
             Route::get('/categories', [\App\Http\Controllers\Merchant\ProductController::class, 'getCategories']);
@@ -215,11 +216,11 @@ Route::prefix('merchant')->group(function () {
 
             // Hotel Merchant Home Dashboard (Can reuse generic HomeController or create custom)
             Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
-            
+
             // Hotel Merchant Analytics
             Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
             Route::get('/analytics/top-performers', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'topProducts']);
-            
+
             // Hotel Merchant Bookings
             Route::prefix('bookings')->group(function () {
                 Route::get('/', [\App\Http\Controllers\Merchant\HotelBookingController::class, 'index']);
@@ -232,11 +233,11 @@ Route::prefix('merchant')->group(function () {
         Route::prefix('bus')->middleware(['role:BUS_MERCHANT'])->group(function () {
             // Bus Merchant Home Dashboard
             Route::get('/home', [\App\Http\Controllers\Merchant\HomeController::class, 'index']);
-            
+
             // Bus Merchant Analytics
             Route::get('/analytics', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'index']);
             Route::get('/analytics/top-performers', [\App\Http\Controllers\Merchant\AnalyticsController::class, 'topProducts']);
-            
+
             // Bus Merchant Buses
             Route::prefix('buses')->group(function () {
                 Route::get('/', [\App\Http\Controllers\Merchant\BusController::class, 'index']);
@@ -273,7 +274,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::get('/', [\App\Http\Controllers\Admin\UserController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\UserController::class, 'show']);
     });
-    
+
     // Refunds
     Route::prefix('refunds')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\RefundController::class, 'index']);
@@ -295,7 +296,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
 */
 Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(function () {
     Route::post('/profile', [\App\Http\Controllers\Rider\ProfileController::class, 'updateProfile']);
-    
+
     // Onboarding specific steps
     Route::post('/profile/setup', [\App\Http\Controllers\Rider\ProfileController::class, 'setup']);
     Route::post('/profile/documents', [\App\Http\Controllers\Rider\ProfileController::class, 'documents']);
@@ -304,11 +305,7 @@ Route::prefix('rider')->middleware(['auth:sanctum', 'role:RIDER'])->group(functi
     Route::prefix('deliveries')->middleware('rider.approved')->group(function () {
         Route::get('/', [\App\Http\Controllers\Rider\DeliveryController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Rider\DeliveryController::class, 'show']);
-        Route::patch('/{id}/accept', [\App\Http\Controllers\Rider\DeliveryController::class, 'accept']);
-        Route::patch('/{id}/pickup', [\App\Http\Controllers\Rider\DeliveryController::class, 'pickup']);
-        Route::patch('/{id}/deliver', [\App\Http\Controllers\Rider\DeliveryController::class, 'deliver']);
+        Route::patch('/{id}/status', [\App\Http\Controllers\Rider\DeliveryController::class, 'updateStatus']);
         Route::post('/{id}/location', [\App\Http\Controllers\Rider\DeliveryController::class, 'updateLocation']);
     });
 });
-
-
