@@ -21,6 +21,7 @@ return new class extends Migration
             
             $table->string('business_name')->nullable(); 
             $table->text('address')->nullable();
+            $table->string('phone_number')->nullable();
             $table->decimal('latitude', 10, 7)->nullable();
             $table->decimal('longitude', 10, 7)->nullable();
             $table->text('description')->nullable();

@@ -21,13 +21,12 @@ return new class extends Migration
             $table->decimal('total_amount', 10, 2);
             $table->decimal('delivery_fee', 8, 2)->default(0);
             $table->string('status')->default('pending_payment'); // pending_payment, paid, processing, on_the_way, delivered, failed
-            $table->text('delivery_address');
+            $table->foreignId('user_address_id')->nullable()->constrained('user_addresses')->nullOnDelete();
             $table->string('payment_method')->default('mpesa');
             
             // M-Pesa specific fields
             $table->string('mpesa_checkout_request_id')->nullable();
             $table->string('mpesa_receipt_number')->nullable();
-            $table->string('customer_phone_number')->nullable();
             
             // Delivery
             $table->string('delivery_otp', 10)->nullable();

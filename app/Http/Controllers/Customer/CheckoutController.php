@@ -70,8 +70,7 @@ class CheckoutController extends Controller
                 'merchant_profile_id' => $merchantId,
                 'total_amount' => $total,
                 'delivery_fee' => $deliveryFee,
-                'delivery_address' => $userAddress->address_text,
-                'customer_phone_number' => $validated['phone_number'],
+                'user_address_id' => $userAddress->id,
                 'payment_method' => 'mpesa',
                 'status' => 'pending_payment',
                 'delivery_otp' => (string) random_int(1000, 9999),
@@ -142,9 +141,7 @@ class CheckoutController extends Controller
         }
 
         try {
-            // Update the phone number in case they want to try a different one
             $order->update([
-                'customer_phone_number' => $validated['phone_number'],
                 'status' => 'pending_payment' // reset status
             ]);
 

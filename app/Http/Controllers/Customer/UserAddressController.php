@@ -25,6 +25,7 @@ class UserAddressController extends Controller
         $validated = $request->validate([
             'title' => 'nullable|string|max:255',
             'address_text' => 'required|string',
+            'phone_number' => 'nullable|string|max:30',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
         ]);
@@ -33,6 +34,7 @@ class UserAddressController extends Controller
             'user_id' => Auth::id(),
             'title' => $validated['title'],
             'address_text' => $validated['address_text'],
+            'phone_number' => $validated['phone_number'] ?? null,
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
         ]);

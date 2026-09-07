@@ -104,6 +104,7 @@ class OnboardingController extends Controller
         $request->validate([
             'business_name' => 'required|string|max:255',
             'address' => 'required|string',
+            'phone_number' => 'nullable|string|max:30',
             'description' => 'required|string',
             'profile_image' => 'nullable|image|max:5120', // 5MB Max
             'cover_image' => 'nullable|image|max:5120',
@@ -132,6 +133,7 @@ class OnboardingController extends Controller
         $merchantProfile->update([
             'business_name' => $request->business_name,
             'address' => $request->address,
+            'phone_number' => $request->phone_number ?? $merchantProfile->phone_number,
             'description' => $request->description,
             'profile_image_path' => $profileImagePath,
             'cover_image_path' => $coverImagePath,

@@ -15,37 +15,74 @@ class DeliveryController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'type' => [
+                'nullable',
+                'string',
+                function ($attribute, $value, $fail) {
+                    if (!in_array(strtolower($value), ['ecommerce', 'restaurant'])) {
+                        $fail('The type must be either ecommerce or restaurant.');
+                    }
+                },
+            ],
+        ]);
+
         $riderId = $request->user()->id;
         $filter = $request->query('filter', 'all'); // available, active, or completed
         $perPage = $request->query('per_page', 15);
 
-        $query = Order::with(['merchantProfile' => function ($q) {
-            $q->select('id', 'business_name', 'address', 'city');
-        }]);
+        $query = Order::with([
+            'address',
+            'user:id,name',
+            'merchantProfile' => function ($q) {
+                $q->select('id', 'business_name', 'address', 'city', 'phone_number', 'latitude', 'longitude');
+            },
+            'items.product.images',
+            'items.variant'
+        ]);
 
-        if ($filter === 'available') {
+        if ($filter === 'ready_for_pickup') {
             // Global: ready for pickup, no rider assigned
             $query->where('status', 'ready_for_pickup')->whereNull('rider_id');
-        } elseif ($filter === 'all') {
-            // Get all
-            $query->where('rider_id', $riderId);
-        } elseif ($filter === 'completed') {
+        } elseif ($filter === 'on_the_way') {
+            // Personal: currently being delivered by this rider
+            $query->where('rider_id', $riderId)->where('status', 'on_the_way');
+        } elseif ($filter === 'delivered') {
             // Personal: delivered by this rider
             $query->where('rider_id', $riderId)->where('status', 'delivered');
+        } elseif ($filter === 'all') {
+            // Get all orders assigned to this rider
+            $query->where('rider_id', $riderId);
         } else {
             // Personal: active (assigned to this rider but not yet delivered)
             $query->where('rider_id', $riderId)->whereIn('status', ['ready_for_pickup', 'on_the_way']);
         }
 
+        if ($type = $request->query('type')) {
+            $normalizedType = strtolower($type);
+            $query->whereHas('items.product.category', function ($q) use ($normalizedType) {
+                $q->where('type', $normalizedType)
+                  ->orWhereHas('parent', function ($pq) use ($normalizedType) {
+                      $pq->where('type', $normalizedType);
+                  });
+            });
+        }
+
         $orders = $query->latest()->paginate($perPage);
-        $orders->getCollection()->makeHidden('delivery_otp'); // Hide OTP from list view
+        $orders->through(fn ($order) => $this->formatOrder($order));
 
         return $this->apiSuccess('Deliveries retrieved', ['orders' => $orders]);
     }
 
     public function show(string $id, Request $request): JsonResponse
     {
-        $order = Order::with(['merchantProfile', 'user', 'items'])->find($id);
+        $order = Order::with([
+            'merchantProfile',
+            'user',
+            'items.product.images',
+            'items.variant',
+            'address'
+        ])->find($id);
 
         if (!$order) {
             return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
@@ -59,9 +96,7 @@ class DeliveryController extends Controller
             return $this->apiError('Unauthorized to view this order', 403, ['code' => 'UNAUTHORIZED_ORDER_ACCESS']);
         }
 
-        $order->makeHidden('delivery_otp');
-
-        return $this->apiSuccess('Delivery details retrieved', ['order' => $order]);
+        return $this->apiSuccess('Delivery details retrieved', ['order' => $this->formatOrder($order)]);
     }
 
     public function accept(string $id, Request $request): JsonResponse
@@ -79,8 +114,9 @@ class DeliveryController extends Controller
         $order->update([
             'rider_id' => $request->user()->id,
         ]);
+        $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
 
-        return $this->apiSuccess('Order accepted successfully', ['order' => $order]);
+        return $this->apiSuccess('Order accepted successfully', ['order' => $this->formatOrder($order)]);
     }
 
     public function pickup(string $id, Request $request): JsonResponse
@@ -92,8 +128,9 @@ class DeliveryController extends Controller
         }
 
         $order->update(['status' => 'on_the_way']);
+        $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
 
-        return $this->apiSuccess('Order picked up successfully', ['order' => $order]);
+        return $this->apiSuccess('Order picked up successfully', ['order' => $this->formatOrder($order)]);
     }
 
     public function deliver(string $id, Request $request): JsonResponse
@@ -169,7 +206,9 @@ class DeliveryController extends Controller
             ]);
         });
 
-        return $this->apiSuccess('Delivery confirmed successfully and wallets updated!', ['order' => $order]);
+        $order->load(['merchantProfile', 'user', 'items.product.images', 'items.variant', 'address']);
+
+        return $this->apiSuccess('Delivery confirmed successfully and wallets updated!', ['order' => $this->formatOrder($order)]);
     }
 
     public function updateLocation(string $id, Request $request): JsonResponse
@@ -196,5 +235,52 @@ class DeliveryController extends Controller
         );
 
         return $this->apiSuccess('Location updated');
+    }
+
+    /**
+     * Format the order for optimal mobile rider experience.
+     */
+    private function formatOrder(Order $order): array
+    {
+        return [
+            'id' => $order->id,
+            'status' => $order->status,
+            'delivery_fee' => (float) $order->delivery_fee,
+            'total_amount' => (float) $order->total_amount,
+            'payment_method' => $order->payment_method,
+            'total_items' => (int) $order->items->sum('quantity'),
+            'pickup' => [
+                'business_name' => $order->merchantProfile->business_name ?? null,
+                'address' => $order->merchantProfile->address ?? null,
+                'city' => $order->merchantProfile->city ?? null,
+                'phone_number' => $order->merchantProfile->phone_number ?? null,
+                'latitude' => $order->merchantProfile->latitude ? (float) $order->merchantProfile->latitude : null,
+                'longitude' => $order->merchantProfile->longitude ? (float) $order->merchantProfile->longitude : null,
+            ],
+            'dropoff' => [
+                'customer_name' => $order->user->name ?? null,
+                'title' => $order->address->title ?? null,
+                'address_text' => $order->address->address_text ?? null,
+                'phone_number' => $order->address->phone_number ?? null,
+                'latitude' => $order->address->latitude ? (float) $order->address->latitude : null,
+                'longitude' => $order->address->longitude ? (float) $order->address->longitude : null,
+            ],
+            'items' => $order->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'name' => $item->product->name ?? 'Unknown',
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => (float) $item->price_at_time_of_purchase,
+                    'total_price' => round((float) $item->price_at_time_of_purchase * $item->quantity, 2),
+                    'variant' => $item->variant ? [
+                        'id' => $item->variant->id,
+                        'name' => $item->variant->name,
+                    ] : null,
+                    'image' => $item->product?->images->first()?->image_url ?? null,
+                ];
+            })->values(),
+            'created_at' => $order->created_at?->toIso8601String(),
+        ];
     }
 }

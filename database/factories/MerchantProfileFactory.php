@@ -25,6 +25,7 @@ class MerchantProfileFactory extends Factory
             'country' => 'KE',
             'city' => 'Nairobi',
             'address' => fake()->address(),
+            'phone_number' => fake()->phoneNumber(),
         ];
     }
 }

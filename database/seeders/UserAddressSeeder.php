@@ -26,6 +26,7 @@ class UserAddressSeeder extends Seeder
                 ['user_id' => $user->id, 'title' => 'Home'],
                 [
                     'address_text' => 'House 12, Road 5, Mohakhali, Dhaka',
+                    'phone_number' => '+254712345678',
                     'latitude' => 23.7771,
                     'longitude' => 90.3994
                 ]
@@ -35,6 +36,7 @@ class UserAddressSeeder extends Seeder
                 ['user_id' => $user->id, 'title' => 'Office'],
                 [
                     'address_text' => '10th Floor, BRAC Tower, Dhaka',
+                    'phone_number' => '+254712345679',
                     'latitude' => 23.7806,
                     'longitude' => 90.4069
                 ]
@@ -44,6 +46,7 @@ class UserAddressSeeder extends Seeder
                 ['user_id' => $user->id, 'title' => 'Friend\'s House'],
                 [
                     'address_text' => 'Gulshan 2, Dhaka',
+                    'phone_number' => '+254712345680',
                     'latitude' => 23.7925,
                     'longitude' => 90.4078
                 ]

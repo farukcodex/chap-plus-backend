@@ -51,6 +51,17 @@ class DeliverySeeder extends Seeder
             $deliveryFee = 5.00;
             $totalAmount = ($product1->base_price * 2) + ($product2->base_price * 1) + $deliveryFee;
 
+            $userAddress = \App\Models\UserAddress::firstOrCreate(
+                ['user_id' => $customer->id],
+                [
+                    'title' => 'Home',
+                    'address_text' => fake()->streetAddress() . ', ' . fake()->city(),
+                    'phone_number' => '+2547' . fake()->numerify('########'),
+                    'latitude' => fake()->latitude(),
+                    'longitude' => fake()->longitude(),
+                ]
+            );
+
             $order = Order::factory()->create([
                 'user_id' => $customer->id,
                 'merchant_profile_id' => $merchant->id,
@@ -59,7 +70,7 @@ class DeliverySeeder extends Seeder
                 'delivery_otp' => '1234',
                 'delivery_fee' => $deliveryFee,
                 'total_amount' => $totalAmount,
-                'delivery_address' => fake()->streetAddress() . ', ' . fake()->city(),
+                'user_address_id' => $userAddress->id,
             ]);
 
             OrderItem::factory()->create([

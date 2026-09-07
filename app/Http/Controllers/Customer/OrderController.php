@@ -17,7 +17,7 @@ class OrderController extends Controller
     {
         $filter = $request->query('filter', 'active'); // active, completed, cancelled
 
-        $query = Order::with(['items.product.images', 'merchantProfile'])
+        $query = Order::with(['items.product.images', 'merchantProfile', 'address'])
             ->where('user_id', $request->user()->id);
 
         if ($filter === 'active') {
@@ -35,7 +35,7 @@ class OrderController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
-        $order = Order::with(['items.product.images', 'items.variant', 'merchantProfile', 'rider'])
+        $order = Order::with(['items.product.images', 'items.variant', 'merchantProfile', 'rider', 'address'])
             ->where('user_id', $request->user()->id)
             ->find($id);
 

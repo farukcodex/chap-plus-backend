@@ -21,7 +21,14 @@ class DummyMerchantSeeder extends Seeder
             $user->assignRole('ECOMMERCE_MERCHANT');
             \App\Models\MerchantProfile::firstOrCreate(
                 ['user_id' => $user->id],
-                ['business_name' => 'Test Shop ' . $i, 'address' => 'Test Address', 'country' => 'US', 'city' => 'New York', 'currency' => 'USD']
+                [
+                    'business_name' => 'Test Shop ' . $i,
+                    'address' => 'Test Address',
+                    'phone_number' => '+25472000000' . $i,
+                    'country' => 'US',
+                    'city' => 'New York',
+                    'currency' => 'USD'
+                ]
             );
         }
 
@@ -34,7 +41,14 @@ class DummyMerchantSeeder extends Seeder
             $user->assignRole('RESTAURANT_MERCHANT');
             \App\Models\MerchantProfile::firstOrCreate(
                 ['user_id' => $user->id],
-                ['business_name' => 'Test Restaurant ' . $i, 'address' => 'Test Address', 'country' => 'US', 'city' => 'New York', 'currency' => 'USD']
+                [
+                    'business_name' => 'Test Restaurant ' . $i,
+                    'address' => 'Test Address',
+                    'phone_number' => '+25473000000' . $i,
+                    'country' => 'US',
+                    'city' => 'New York',
+                    'currency' => 'USD'
+                ]
             );
         }
         
@@ -47,7 +61,14 @@ class DummyMerchantSeeder extends Seeder
             $user->assignRole('HOTEL_MERCHANT');
             \App\Models\MerchantProfile::firstOrCreate(
                 ['user_id' => $user->id],
-                ['business_name' => 'Test Hotel Manager ' . $i, 'address' => 'Test Address', 'country' => 'US', 'city' => 'New York', 'currency' => 'USD']
+                [
+                    'business_name' => 'Test Hotel Manager ' . $i,
+                    'address' => 'Test Address',
+                    'phone_number' => '+25474000000' . $i,
+                    'country' => 'US',
+                    'city' => 'New York',
+                    'currency' => 'USD'
+                ]
             );
         }
     }

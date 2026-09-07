@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'currency',
     'business_name', 
     'address',
+    'phone_number',
     'latitude',
     'longitude',
     'description', 

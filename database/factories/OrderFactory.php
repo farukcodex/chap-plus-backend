@@ -19,11 +19,10 @@ class OrderFactory extends Factory
             'total_amount' => fake()->randomFloat(2, 10, 200),
             'delivery_fee' => fake()->randomFloat(2, 2, 10),
             'status' => 'pending_payment',
-            'delivery_address' => fake()->address(),
+            'user_address_id' => \App\Models\UserAddress::factory(),
             'payment_method' => 'mpesa',
             'delivery_otp' => '1234',
             'rider_id' => null,
-            'customer_phone_number' => fake()->phoneNumber(),
         ];
     }
 }
