@@ -13,11 +13,11 @@ class DummyUserSeeder extends Seeder
     public function run(): void
     {
         // Generate 10 standard users with exact, predictable emails (user1@yopmail.com to user10@yopmail.com)
-        $users = \App\Models\User::factory(10)
-            ->sequence(fn ($sequence) => ['email' => 'user' . ($sequence->index + 1) . '@yopmail.com'])
-            ->create();
-        
-        foreach ($users as $user) {
+        for ($i = 1; $i <= 10; $i++) {
+            $user = \App\Models\User::updateOrCreate(
+                ['email' => 'user' . $i . '@yopmail.com'],
+                ['name' => 'User ' . $i, 'password' => \Illuminate\Support\Facades\Hash::make('12348765'), 'email_verified_at' => now()]
+            );
             $user->assignRole('USER');
         }
     }

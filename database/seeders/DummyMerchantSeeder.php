@@ -13,41 +13,42 @@ class DummyMerchantSeeder extends Seeder
     public function run(): void
     {
         // Generate 5 predictable ecommerce merchants
-        $ecommerceUsers = \App\Models\User::factory(5)
-            ->sequence(fn ($sequence) => ['email' => 'merchant' . ($sequence->index + 1) . '@yopmail.com'])
-            ->create();
-
-        foreach ($ecommerceUsers as $index => $user) {
+        for ($i = 1; $i <= 5; $i++) {
+            $user = \App\Models\User::updateOrCreate(
+                ['email' => 'merchant' . $i . '@yopmail.com'],
+                ['name' => 'Merchant ' . $i, 'password' => \Illuminate\Support\Facades\Hash::make('12348765'), 'email_verified_at' => now()]
+            );
             $user->assignRole('ECOMMERCE_MERCHANT');
-            \App\Models\MerchantProfile::factory()->create([
-                'user_id' => $user->id,
-                'business_name' => 'Test Shop ' . ($index + 1),
-            ]);
+            \App\Models\MerchantProfile::firstOrCreate(
+                ['user_id' => $user->id],
+                ['business_name' => 'Test Shop ' . $i, 'address' => 'Test Address', 'country' => 'US', 'city' => 'New York', 'currency' => 'USD']
+            );
         }
 
         // Generate 3 predictable restaurant merchants
-        $restaurantUsers = \App\Models\User::factory(3)
-            ->sequence(fn ($sequence) => ['email' => 'restaurant' . ($sequence->index + 1) . '@yopmail.com'])
-            ->create();
-
-        foreach ($restaurantUsers as $index => $user) {
+        for ($i = 1; $i <= 3; $i++) {
+            $user = \App\Models\User::updateOrCreate(
+                ['email' => 'restaurant' . $i . '@yopmail.com'],
+                ['name' => 'Restaurant ' . $i, 'password' => \Illuminate\Support\Facades\Hash::make('12348765'), 'email_verified_at' => now()]
+            );
             $user->assignRole('RESTAURANT_MERCHANT');
-            \App\Models\MerchantProfile::factory()->create([
-                'user_id' => $user->id,
-                'business_name' => 'Test Restaurant ' . ($index + 1),
-            ]);
+            \App\Models\MerchantProfile::firstOrCreate(
+                ['user_id' => $user->id],
+                ['business_name' => 'Test Restaurant ' . $i, 'address' => 'Test Address', 'country' => 'US', 'city' => 'New York', 'currency' => 'USD']
+            );
         }
+        
         // Generate 3 predictable hotel merchants
-        $hotelUsers = \App\Models\User::factory(3)
-            ->sequence(fn ($sequence) => ['email' => 'hotel' . ($sequence->index + 1) . '@yopmail.com'])
-            ->create();
-
-        foreach ($hotelUsers as $index => $user) {
+        for ($i = 1; $i <= 3; $i++) {
+            $user = \App\Models\User::updateOrCreate(
+                ['email' => 'hotel' . $i . '@yopmail.com'],
+                ['name' => 'Hotel ' . $i, 'password' => \Illuminate\Support\Facades\Hash::make('12348765'), 'email_verified_at' => now()]
+            );
             $user->assignRole('HOTEL_MERCHANT');
-            \App\Models\MerchantProfile::factory()->create([
-                'user_id' => $user->id,
-                'business_name' => 'Test Hotel Manager ' . ($index + 1),
-            ]);
+            \App\Models\MerchantProfile::firstOrCreate(
+                ['user_id' => $user->id],
+                ['business_name' => 'Test Hotel Manager ' . $i, 'address' => 'Test Address', 'country' => 'US', 'city' => 'New York', 'currency' => 'USD']
+            );
         }
     }
 }

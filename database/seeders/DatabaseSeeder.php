@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             CountryDeliveryFeeSeeder::class,
             UserAddressSeeder::class,
             UserProfileSeeder::class,
+            DeliverySeeder::class,
 
         ]);
     }

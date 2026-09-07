@@ -17,6 +17,7 @@ class DeliveryController extends Controller
     {
         $riderId = $request->user()->id;
         $filter = $request->query('filter', 'all'); // available, active, or completed
+        $perPage = $request->query('per_page', 15);
 
         $query = Order::with(['merchantProfile' => function ($q) {
             $q->select('id', 'business_name', 'address', 'city');
@@ -36,7 +37,7 @@ class DeliveryController extends Controller
             $query->where('rider_id', $riderId)->whereIn('status', ['ready_for_pickup', 'on_the_way']);
         }
 
-        $orders = $query->latest()->paginate(15);
+        $orders = $query->latest()->paginate($perPage);
         $orders->getCollection()->makeHidden('delivery_otp'); // Hide OTP from list view
 
         return $this->apiSuccess('Deliveries retrieved', ['orders' => $orders]);
@@ -49,7 +50,7 @@ class DeliveryController extends Controller
         if (!$order) {
             return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
-        
+
         // Authorization check: A rider can only view an order if they own it, OR if it's available for anyone to accept.
         $isAvailable = is_null($order->rider_id) && $order->status === 'ready_for_pickup';
         $isOwner = $order->rider_id === $request->user()->id;
@@ -70,7 +71,7 @@ class DeliveryController extends Controller
         if (!$order) {
             return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
-        
+
         if ($order->status !== 'ready_for_pickup') {
             return $this->apiError('Order is no longer available', 400, ['code' => 'ORDER_UNAVAILABLE']);
         }
@@ -115,7 +116,7 @@ class DeliveryController extends Controller
             // 1. Fetch Commission Settings
             $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
             $riderCommissionPercent = \App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.00;
-            
+
             $totalAmount = $order->total_amount;
             $deliveryFee = $order->delivery_fee ?? 0;
 
@@ -125,7 +126,7 @@ class DeliveryController extends Controller
 
             $adminRiderCommission = $deliveryFee * ($riderCommissionPercent / 100);
             $riderEarnings = $deliveryFee - $adminRiderCommission;
-            
+
             $totalAdminCommission = $adminMerchantCommission + $adminRiderCommission;
 
             // 2. Admin Wallet
@@ -189,8 +190,8 @@ class DeliveryController extends Controller
 
         // Save only the latest location to cache so the customer can fetch it on load without waiting for the next ping
         \Illuminate\Support\Facades\Cache::put(
-            'order_'.$order->id.'_location', 
-            ['latitude' => $request->latitude, 'longitude' => $request->longitude], 
+            'order_' . $order->id . '_location',
+            ['latitude' => $request->latitude, 'longitude' => $request->longitude],
             3600 // Cache for 1 hour
         );
 
