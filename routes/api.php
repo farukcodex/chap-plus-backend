@@ -91,8 +91,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('buses')->group(function () {
         Route::get('/', [\App\Http\Controllers\Customer\BusController::class, 'index']);
         Route::get('/{id}/seat-map', [\App\Http\Controllers\Customer\BusController::class, 'seatMap']);
-        Route::post('/book', [\App\Http\Controllers\Customer\BusController::class, 'initiateBooking']);
+        Route::post('/bookings', [\App\Http\Controllers\Customer\BusController::class, 'book']);
+        Route::post('/book', [\App\Http\Controllers\Customer\BusController::class, 'book']); // Convenience alias
+        Route::get('/bookings', [\App\Http\Controllers\Customer\BusController::class, 'myBookings']);
+        Route::get('/bookings/{id}', [\App\Http\Controllers\Customer\BusController::class, 'showBooking']);
+        Route::get('/bookings/{id}/ticket', [\App\Http\Controllers\Customer\BusController::class, 'downloadTicket']);
         Route::post('/bookings/{id}/retry-payment', [\App\Http\Controllers\Customer\BusController::class, 'retryPayment']);
+        Route::post('/bookings/{id}/cancel', [\App\Http\Controllers\Customer\BusController::class, 'cancelBooking']);
     });
 
     // Customer E-commerce
@@ -139,6 +144,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // M-Pesa Webhook (Must be outside auth middleware!)
 Route::post('/webhooks/mpesa/callback', [\App\Http\Controllers\Customer\CheckoutController::class, 'mpesaWebhook']);
+Route::post('/webhooks/mpesa/simulate', [\App\Http\Controllers\Customer\CheckoutController::class, 'simulateMpesaCallback']);
 
 // Webhooks
 Route::post('/checkout/callback', [\App\Http\Controllers\Customer\CheckoutController::class, 'handleCallback']);

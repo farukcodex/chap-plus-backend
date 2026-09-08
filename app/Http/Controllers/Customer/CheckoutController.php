@@ -9,6 +9,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Notifications\Customer\BusBookingConfirmedNotification;
+use App\Notifications\Customer\BusBookingPaymentFailedNotification;
 use App\Notifications\Customer\HotelBookingConfirmedNotification;
 use App\Notifications\Customer\OrderPlacedNotification;
 use App\Notifications\Customer\OrderStatusUpdatedNotification;
@@ -204,7 +205,9 @@ class CheckoutController extends Controller
         // The sandbox often fires the webhook instantly, sometimes BEFORE our main 
         // checkout process has even finished receiving the CheckoutRequestID from the API 
         // and saving it to the database! We add a tiny delay to let the DB catch up.
-        sleep(2);
+        if (!$request->input('is_simulation')) {
+            sleep(2);
+        }
 
         $order = Order::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
 
@@ -313,11 +316,19 @@ class CheckoutController extends Controller
                         Log::error("Failed to process Bus Booking payout: " . $e->getMessage());
                     }
                 } else {
+                    $resultDesc = $callbackData['ResultDesc'] ?? 'Payment failed or was cancelled';
                     $busBooking->update(['status' => 'failed']);
-                    Log::warning("Bus Booking #{$busBooking->id} payment failed.");
+                    Log::warning("Bus Booking #{$busBooking->id} payment failed: {$resultDesc}");
                     
                     // Release the Reverb lock instantly
                     event(new \App\Events\SeatUnlockedEvent($busBooking->bus_id, $busBooking->travel_date->format('Y-m-d'), $busBooking->seat_numbers));
+
+                    // Send multi-channel notification to customer (Email, Push, In-App)
+                    try {
+                        $busBooking->user?->notify(new BusBookingPaymentFailedNotification($busBooking, $resultDesc));
+                    } catch (\Throwable $e) {
+                        Log::error("Failed to send BusBookingPaymentFailedNotification: " . $e->getMessage());
+                    }
                 }
                 
                 return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
@@ -371,5 +382,100 @@ class CheckoutController extends Controller
         }
 
         return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+    }
+
+    /**
+     * Simulate M-Pesa STK Callback (Sandbox helper for testing Success/Failure flows)
+     */
+    public function simulateMpesaCallback(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'booking_id' => 'nullable|integer',
+            'order_id' => 'nullable|integer',
+            'checkout_request_id' => 'nullable|string',
+            'status' => 'nullable|string|in:success,failed',
+        ]);
+
+        $checkoutRequestId = $validated['checkout_request_id'] ?? null;
+        $amount = 10.00;
+        $phone = '254708374149';
+        $busBooking = null;
+
+        if (!empty($validated['booking_id'])) {
+            $busBooking = \App\Models\BusBooking::find($validated['booking_id']);
+            if (!$busBooking) {
+                return $this->apiError('Bus Booking not found', 404);
+            }
+            if (empty($busBooking->mpesa_checkout_request_id)) {
+                $busBooking->update(['mpesa_checkout_request_id' => 'ws_SIM_' . time()]);
+            }
+            $checkoutRequestId = $busBooking->mpesa_checkout_request_id;
+            $amount = (float) $busBooking->total_price;
+            $phone = $busBooking->passenger_phone ?? '254708374149';
+        } elseif (!empty($validated['order_id'])) {
+            $order = Order::find($validated['order_id']);
+            if (!$order) {
+                return $this->apiError('Order not found', 404);
+            }
+            if (empty($order->mpesa_checkout_request_id)) {
+                $order->update(['mpesa_checkout_request_id' => 'ws_SIM_' . time()]);
+            }
+            $checkoutRequestId = $order->mpesa_checkout_request_id;
+            $amount = (float) ($order->total_amount + $order->delivery_fee);
+        }
+
+        if (!$checkoutRequestId) {
+            return $this->apiError('Please provide booking_id, order_id, or checkout_request_id', 400);
+        }
+
+        $isSuccess = ($validated['status'] ?? 'success') === 'success';
+        $receiptNumber = 'NLJ' . strtoupper(substr(md5(uniqid()), 0, 7));
+
+        if ($isSuccess) {
+            $payload = [
+                'is_simulation' => true,
+                'Body' => [
+                    'stkCallback' => [
+                        'MerchantRequestID' => 'SIM-REQ-' . time(),
+                        'CheckoutRequestID' => $checkoutRequestId,
+                        'ResultCode' => 0,
+                        'ResultDesc' => 'The service request is processed successfully.',
+                        'CallbackMetadata' => [
+                            'Item' => [
+                                ['Name' => 'Amount', 'Value' => $amount],
+                                ['Name' => 'MpesaReceiptNumber', 'Value' => $receiptNumber],
+                                ['Name' => 'TransactionDate', 'Value' => (int) date('YmdHis')],
+                                ['Name' => 'PhoneNumber', 'Value' => (int) preg_replace('/\D/', '', $phone)],
+                            ]
+                        ]
+                    ]
+                ]
+            ];
+        } else {
+            $payload = [
+                'is_simulation' => true,
+                'Body' => [
+                    'stkCallback' => [
+                        'MerchantRequestID' => 'SIM-REQ-' . time(),
+                        'CheckoutRequestID' => $checkoutRequestId,
+                        'ResultCode' => 1037,
+                        'ResultDesc' => 'DS timeout user cannot be reached.'
+                    ]
+                ]
+            ];
+        }
+
+        $webhookRequest = Request::create('/api/webhooks/mpesa/callback', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($payload));
+        $this->mpesaWebhook($webhookRequest);
+
+        $updatedBooking = $busBooking ? $busBooking->fresh(['bus', 'merchantProfile']) : null;
+
+        return $this->apiSuccess('Simulation webhook executed successfully!', [
+            'status' => $isSuccess ? 'paid' : 'failed',
+            'checkout_request_id' => $checkoutRequestId,
+            'mpesa_receipt_number' => $isSuccess ? $receiptNumber : null,
+            'amount' => $amount,
+            'booking' => $updatedBooking,
+        ]);
     }
 }
