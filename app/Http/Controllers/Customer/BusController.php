@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\MpesaService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Http\Resources\Customer\BusResource;
+use App\Http\Resources\Customer\BusBookingResource;
 use Exception;
 
 class BusController extends Controller
@@ -36,17 +38,22 @@ class BusController extends Controller
     }
 
     /**
-     * Search & list buses
+     * Search & list buses with filtering, dynamic seat availability, and pagination
      */
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'departure_place' => 'nullable|string',
+            'departure_place'   => 'nullable|string',
             'destination_place' => 'nullable|string',
-            'travel_date' => 'nullable|date|after_or_equal:today',
+            'travel_date'       => 'nullable|date|after_or_equal:today',
+            'bus_type'          => 'nullable|string',
+            'min_price'         => 'nullable|numeric|min:0',
+            'max_price'         => 'nullable|numeric|min:0',
+            'sort_by'           => 'nullable|string|in:price_asc,price_desc,departure_time_asc,departure_time_desc',
+            'per_page'          => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = Bus::with(['images', 'merchantProfile.user'])->where('is_active', true);
+        $query = Bus::with(['images', 'merchantProfile'])->where('is_active', true);
 
         if (!empty($validated['departure_place'])) {
             $query->where('departure_place', 'like', '%' . $validated['departure_place'] . '%');
@@ -54,10 +61,79 @@ class BusController extends Controller
         if (!empty($validated['destination_place'])) {
             $query->where('destination_place', 'like', '%' . $validated['destination_place'] . '%');
         }
+        if (!empty($validated['bus_type'])) {
+            $query->where('bus_type', $validated['bus_type']);
+        }
+        if (isset($validated['min_price'])) {
+            $query->where('price_per_seat', '>=', $validated['min_price']);
+        }
+        if (isset($validated['max_price'])) {
+            $query->where('price_per_seat', '<=', $validated['max_price']);
+        }
 
-        $buses = $query->get();
+        $sortBy = $validated['sort_by'] ?? 'departure_time_asc';
+        switch ($sortBy) {
+            case 'price_asc':
+                $query->orderBy('price_per_seat', 'asc');
+                break;
+            case 'price_desc':
+                $query->orderBy('price_per_seat', 'desc');
+                break;
+            case 'departure_time_desc':
+                $query->orderBy('departure_time', 'desc');
+                break;
+            case 'departure_time_asc':
+            default:
+                $query->orderBy('departure_time', 'asc');
+                break;
+        }
 
-        return $this->apiSuccess('Buses retrieved successfully', ['buses' => $buses]);
+        $perPage = (int) ($validated['per_page'] ?? 15);
+        $buses = $query->paginate($perPage);
+
+        // Calculate dynamic seat availability for the given travel_date without N+1 queries
+        $travelDate = $validated['travel_date'] ?? null;
+        if ($travelDate && $buses->isNotEmpty()) {
+            $busIds = $buses->pluck('id')->toArray();
+            $activeBookings = BusBooking::whereIn('bus_id', $busIds)
+                ->where('travel_date', $travelDate)
+                ->where(function ($q) {
+                    $q->where('status', 'paid')
+                      ->orWhere(function ($sub) {
+                          $sub->where('status', 'pending_payment')
+                              ->where('locked_until', '>', Carbon::now());
+                      });
+                })
+                ->get(['bus_id', 'seat_numbers']);
+
+            $bookedSeatsPerBus = [];
+            foreach ($activeBookings as $b) {
+                $seats = is_array($b->seat_numbers) ? $b->seat_numbers : [];
+                $bookedSeatsPerBus[$b->bus_id] = array_merge($bookedSeatsPerBus[$b->bus_id] ?? [], $seats);
+            }
+
+            foreach ($buses as $bus) {
+                $uniqueBooked = array_values(array_unique($bookedSeatsPerBus[$bus->id] ?? []));
+                $bookedCount = count($uniqueBooked);
+                $availableCount = max(0, $bus->total_bookable_seats - $bookedCount);
+
+                $bus->travel_date = $travelDate;
+                $bus->booked_seats_count = $bookedCount;
+                $bus->available_seats_count = $availableCount;
+                $bus->is_sold_out = ($availableCount === 0);
+            }
+        }
+
+        return $this->apiSuccess('Buses retrieved successfully', [
+            'buses' => BusResource::collection($buses),
+            'pagination' => [
+                'current_page' => $buses->currentPage(),
+                'per_page'     => $buses->perPage(),
+                'total'        => $buses->total(),
+                'last_page'    => $buses->lastPage(),
+                'has_more'     => $buses->hasMorePages(),
+            ]
+        ]);
     }
 
     /**
@@ -69,19 +145,25 @@ class BusController extends Controller
             'travel_date' => 'required|date|after_or_equal:today',
         ]);
 
-        $bus = Bus::with(['images', 'merchantProfile.user'])->findOrFail($id);
+        $bus = Bus::with(['images', 'merchantProfile'])->findOrFail($id);
         $seatMap = $this->generateSeatMap($bus, $validated['travel_date']);
 
         $bookedSeats = $this->getBookedSeats($bus->id, $validated['travel_date']);
         $bookedSeatsCount = count($bookedSeats);
         $availableSeatsCount = max(0, $bus->total_bookable_seats - $bookedSeatsCount);
 
+        $bus->travel_date = $validated['travel_date'];
+        $bus->available_seats_count = $availableSeatsCount;
+        $bus->booked_seats_count = $bookedSeatsCount;
+        $bus->is_sold_out = ($availableSeatsCount === 0);
+
         return $this->apiSuccess('Seat map generated successfully', [
-            'bus' => $bus,
+            'bus' => new BusResource($bus),
             'travel_date' => $validated['travel_date'],
             'total_bookable_seats' => $bus->total_bookable_seats,
             'available_seats_count' => $availableSeatsCount,
             'booked_seats_count' => $bookedSeatsCount,
+            'booked_seats' => $bookedSeats,
             'driver_position' => $bus->driver_position,
             'has_middle_door' => (bool) $bus->has_middle_door,
             'seat_map' => $seatMap,
@@ -165,24 +247,32 @@ class BusController extends Controller
                 $rowData['back_seats'] = [];
                 for ($i = 0; $i < $bus->back_row_seats; $i++) {
                     $seatId = $letters[$i] . $row;
-                    $seatItem = [
+                    $seatType = ($i === 0 || $i === $bus->back_row_seats - 1) ? 'window' : 'middle';
+                    $rowData['back_seats'][] = [
                         'id' => $seatId,
+                        'seat_number' => $seatId,
+                        'seat_type' => $seatType,
                         'is_available' => !in_array($seatId, $bookedSeats)
                     ];
-                    $rowData['back_seats'][] = $seatItem;
                 }
             } else {
                 for ($i = 0; $i < $leftCols; $i++) {
                     $seatId = $letters[$i] . $row;
+                    $seatType = ($i === 0) ? 'window' : (($i === $leftCols - 1) ? 'aisle' : 'middle');
                     $rowData['left'][] = [
                         'id' => $seatId,
+                        'seat_number' => $seatId,
+                        'seat_type' => $seatType,
                         'is_available' => !in_array($seatId, $bookedSeats)
                     ];
                 }
                 for ($i = 0; $i < $rightCols; $i++) {
                     $seatId = $letters[$leftCols + $i] . $row;
+                    $seatType = ($i === $rightCols - 1) ? 'window' : (($i === 0) ? 'aisle' : 'middle');
                     $rowData['right'][] = [
                         'id' => $seatId,
+                        'seat_number' => $seatId,
+                        'seat_type' => $seatType,
                         'is_available' => !in_array($seatId, $bookedSeats)
                     ];
                 }
@@ -257,9 +347,9 @@ class BusController extends Controller
                 DB::commit();
 
                 return $this->apiSuccess('Booking confirmed and paid successfully via Wallet!', [
-                    'booking' => $booking->fresh(['bus', 'merchantProfile']),
+                    'booking' => new BusBookingResource($booking->fresh(['bus.images', 'merchantProfile'])),
                     'payment_method' => 'wallet',
-                    'wallet_balance' => $walletResult['new_balance'],
+                    'wallet_balance' => (float) $walletResult['new_balance'],
                 ], 201);
             }
 
@@ -286,9 +376,13 @@ class BusController extends Controller
             $user->notify(new BusBookingPendingNotification($booking));
 
             return $this->apiSuccess('Seats locked successfully. Please enter your M-Pesa PIN on your phone to complete payment.', [
-                'booking' => $booking->fresh(['bus', 'merchantProfile']),
+                'booking' => new BusBookingResource($booking->fresh(['bus.images', 'merchantProfile'])),
                 'payment_method' => 'mpesa',
-                'mpesa_response' => $mpesaResponse
+                'payment_instructions' => [
+                    'method'       => 'mpesa',
+                    'prompt_phone' => $paymentPhone,
+                    'message'      => "An STK payment prompt has been sent to {$paymentPhone}. Please enter your M-Pesa PIN to complete payment.",
+                ],
             ], 201);
 
         } catch (Exception $e) {
@@ -373,13 +467,21 @@ class BusController extends Controller
      */
     public function myBookings(Request $request): JsonResponse
     {
+        $perPage = (int) $request->input('per_page', 15);
         $bookings = BusBooking::with(['bus.images', 'merchantProfile'])
             ->where('user_id', $request->user()->id)
             ->latest()
-            ->paginate(15);
+            ->paginate($perPage);
 
         return $this->apiSuccess('Bookings retrieved successfully', [
-            'bookings' => $bookings
+            'bookings' => BusBookingResource::collection($bookings),
+            'pagination' => [
+                'current_page' => $bookings->currentPage(),
+                'per_page'     => $bookings->perPage(),
+                'total'        => $bookings->total(),
+                'last_page'    => $bookings->lastPage(),
+                'has_more'     => $bookings->hasMorePages(),
+            ]
         ]);
     }
 
@@ -388,7 +490,7 @@ class BusController extends Controller
      */
     public function showBooking(Request $request, string $id): JsonResponse
     {
-        $booking = BusBooking::with(['bus.images', 'merchantProfile.user'])
+        $booking = BusBooking::with(['bus.images', 'merchantProfile'])
             ->where('user_id', $request->user()->id)
             ->find($id);
 
@@ -397,7 +499,7 @@ class BusController extends Controller
         }
 
         return $this->apiSuccess('Booking details retrieved successfully', [
-            'booking' => $booking
+            'booking' => new BusBookingResource($booking)
         ]);
     }
 
@@ -516,7 +618,7 @@ class BusController extends Controller
             'phone_number' => 'nullable|string|max:50',
         ]);
 
-        $booking = BusBooking::with(['bus', 'merchantProfile.user'])
+        $booking = BusBooking::with(['bus.images', 'merchantProfile'])
             ->where('user_id', $request->user()->id)
             ->find($id);
 
@@ -600,9 +702,9 @@ class BusController extends Controller
                 }
 
                 return $this->apiSuccess('Booking paid successfully via Wallet!', [
-                    'booking' => $booking->fresh(['bus', 'merchantProfile']),
+                    'booking' => new BusBookingResource($booking->fresh(['bus.images', 'merchantProfile'])),
                     'payment_method' => 'wallet',
-                    'wallet_balance' => $walletResult['new_balance'],
+                    'wallet_balance' => (float) $walletResult['new_balance'],
                 ]);
             }
 
@@ -626,9 +728,13 @@ class BusController extends Controller
             ]);
 
             return $this->apiSuccess('M-Pesa payment retry initiated! Please enter your PIN on your phone.', [
-                'booking' => $booking->fresh(['bus', 'merchantProfile']),
+                'booking' => new BusBookingResource($booking->fresh(['bus.images', 'merchantProfile'])),
                 'payment_method' => 'mpesa',
-                'mpesa_response' => $mpesaResponse,
+                'payment_instructions' => [
+                    'method'       => 'mpesa',
+                    'prompt_phone' => $paymentPhone,
+                    'message'      => "An STK payment prompt has been sent to {$paymentPhone}. Please enter your M-Pesa PIN to complete payment.",
+                ],
             ]);
 
         } catch (Exception $e) {
