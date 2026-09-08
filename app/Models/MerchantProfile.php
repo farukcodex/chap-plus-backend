@@ -47,6 +47,11 @@ class MerchantProfile extends Model
         return $this->hasMany(Hotel::class);
     }
 
+    public function buses()
+    {
+        return $this->hasMany(Bus::class);
+    }
+
     public function getProfileImageUrlAttribute()
     {
         if (!$this->profile_image_path) {

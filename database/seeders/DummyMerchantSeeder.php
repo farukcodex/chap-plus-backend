@@ -77,5 +77,27 @@ class DummyMerchantSeeder extends Seeder
                 ]
             );
         }
+
+        // Generate 3 predictable bus merchants
+        for ($i = 1; $i <= 3; $i++) {
+            $user = \App\Models\User::updateOrCreate(
+                ['email' => 'bus' . $i . '@yopmail.com'],
+                ['name' => 'Bus Merchant ' . $i, 'password' => \Illuminate\Support\Facades\Hash::make('12348765'), 'email_verified_at' => now()]
+            );
+            $user->assignRole('BUS_MERCHANT');
+            \App\Models\MerchantProfile::firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'business_name' => 'Test Bus Operator ' . $i,
+                    'address' => 'Test Address',
+                    'phone_number' => '+25475000000' . $i,
+                    'latitude' => 23.7950 + ($i * 0.002),
+                    'longitude' => 90.4150 + ($i * 0.002),
+                    'country' => 'US',
+                    'city' => 'New York',
+                    'currency' => 'USD'
+                ]
+            );
+        }
     }
 }
