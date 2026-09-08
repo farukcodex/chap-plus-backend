@@ -66,6 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Notifications Inbox - Shared for Customer, Rider, Merchant, Admin
     Route::prefix('notifications')->group(function () {
         Route::get('/', [\App\Http\Controllers\NotificationController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\NotificationController::class, 'show']);
         Route::post('/{id}/read', [\App\Http\Controllers\NotificationController::class, 'markAsRead']);
         Route::post('/read-all', [\App\Http\Controllers\NotificationController::class, 'markAllAsRead']);
         Route::delete('/{id}', [\App\Http\Controllers\NotificationController::class, 'destroy']);

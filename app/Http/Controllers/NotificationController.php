@@ -131,6 +131,43 @@ class NotificationController extends Controller
     }
 
     /**
+     * View/Show details of a specific notification.
+     * Automatically marks the notification as read upon viewing.
+     */
+    public function show(Request $request, string $id): JsonResponse
+    {
+        $user = $request->user();
+        $notification = $user->notifications()->where('id', $id)->first();
+
+        if (!$notification) {
+            return $this->apiError('Notification not found', 404);
+        }
+
+        // Auto mark as read on view if not already read
+        if ($notification->read_at === null) {
+            $notification->markAsRead();
+        }
+
+        $data = is_array($notification->data) ? $notification->data : (json_decode($notification->data, true) ?? []);
+
+        return $this->apiSuccess('Notification details retrieved successfully', [
+            'notification' => [
+                'id'           => $notification->id,
+                'type'         => $data['type'] ?? class_basename($notification->type),
+                'title'        => $data['title'] ?? 'Notification',
+                'message'      => $data['message'] ?? '',
+                'order_id'     => $data['order_id'] ?? null,
+                'order_number' => $data['order_number'] ?? null,
+                'data'         => $data,
+                'read'         => true,
+                'read_at'      => $notification->fresh()->read_at?->toISOString(),
+                'created_at'   => $notification->created_at?->toISOString(),
+            ],
+            'unread_count' => $user->unreadNotifications()->count(),
+        ]);
+    }
+
+    /**
      * Mark a specific notification as read.
      */
     public function markAsRead(Request $request, string $id): JsonResponse

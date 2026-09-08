@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
 use App\Models\Order;
+use App\Models\User;
+use App\Notifications\Customer\OrderStatusUpdatedNotification;
+use App\Notifications\Rider\NewDeliveryAvailableNotification;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 
@@ -58,12 +61,13 @@ class OrderController extends Controller
     public function updateStatus(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:processing,ready_for_pickup,cancelled'
+            'status'              => 'required|string|in:processing,ready_for_pickup,cancelled',
+            'cancellation_reason' => 'nullable|string|max:500',
         ]);
 
         $merchantProfile = $request->user()->merchantProfile;
 
-        $order = Order::where('merchant_profile_id', $merchantProfile->id)->find($id);
+        $order = Order::with(['user', 'merchantProfile'])->where('merchant_profile_id', $merchantProfile->id)->find($id);
 
         if (!$order) {
             return $this->apiError('Order not found', 404);
@@ -82,7 +86,25 @@ class OrderController extends Controller
             return $this->apiError('You cannot cancel an order that is already accepted, picked up, on the way, or delivered.', 400);
         }
 
-        $order->update(['status' => $validated['status']]);
+        $updateData = ['status' => $validated['status']];
+        if (!empty($validated['cancellation_reason'])) {
+            $updateData['cancellation_reason'] = $validated['cancellation_reason'];
+        }
+        $order->update($updateData);
+
+        // Notify customer (In-App + Push, and Email if cancelled)
+        $order->user?->notify(new OrderStatusUpdatedNotification(
+            $order,
+            $validated['status'],
+            $validated['cancellation_reason'] ?? null
+        ));
+
+        // When order is ready for pickup, alert riders that a new delivery is available
+        if ($validated['status'] === 'ready_for_pickup') {
+            User::role('rider')->get()->each(function ($rider) use ($order) {
+                $rider->notify(new NewDeliveryAvailableNotification($order));
+            });
+        }
 
         return $this->apiSuccess('Order status updated successfully', ['order' => $order]);
     }

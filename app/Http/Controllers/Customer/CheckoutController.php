@@ -8,8 +8,12 @@ use Illuminate\Http\Request;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
-use App\Services\MpesaService;
+use App\Notifications\Customer\BusBookingConfirmedNotification;
+use App\Notifications\Customer\HotelBookingConfirmedNotification;
+use App\Notifications\Customer\OrderPlacedNotification;
+use App\Notifications\Customer\OrderStatusUpdatedNotification;
 use App\Services\DistanceService;
+use App\Services\MpesaService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -228,6 +232,9 @@ class CheckoutController extends Controller
                         'mpesa_receipt_number' => $receiptNumber
                     ]);
 
+                    // Send multi-channel notification (Push, In-App, Email voucher)
+                    $booking->user?->notify(new HotelBookingConfirmedNotification($booking));
+
                     Log::info("Hotel Booking #{$booking->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
                 } else {
                     $booking->update(['status' => 'failed']);
@@ -296,6 +303,10 @@ class CheckoutController extends Controller
                         ]);
 
                         \Illuminate\Support\Facades\DB::commit();
+
+                        // Send multi-channel notification (Push, In-App, Email boarding pass)
+                        $busBooking->user?->notify(new BusBookingConfirmedNotification($busBooking));
+
                         Log::info("Bus Booking #{$busBooking->id} paid successfully and wallets credited via M-Pesa. Receipt: {$receiptNumber}");
                     } catch (\Exception $e) {
                         \Illuminate\Support\Facades\DB::rollBack();
@@ -339,12 +350,23 @@ class CheckoutController extends Controller
                 'mpesa_receipt_number' => $receiptNumber
             ]);
 
+            // Send multi-channel notification (Push, In-App, Email invoice)
+            $order->user?->notify(new OrderPlacedNotification($order));
+
             Log::info("Order #{$order->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
         } else {
             // Payment Failed or Cancelled by user
             $order->update([
                 'status' => 'failed'
             ]);
+
+            // Send notification of failed/cancelled order
+            $order->user?->notify(new OrderStatusUpdatedNotification(
+                $order,
+                'cancelled',
+                'M-Pesa payment was cancelled or failed: ' . ($callbackData['ResultDesc'] ?? 'Unknown error')
+            ));
+
             Log::info("Order #{$order->id} M-Pesa payment failed. Reason: {$callbackData['ResultDesc']}");
         }
 

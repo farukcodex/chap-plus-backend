@@ -7,6 +7,7 @@ use App\Http\Requests\Rider\DeliveryIndexRequest;
 use App\Http\Requests\Rider\UpdateDeliveryStatusRequest;
 use Illuminate\Http\Request;
 use App\Models\Order;
+use App\Notifications\Customer\OrderStatusUpdatedNotification;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 
@@ -117,7 +118,13 @@ class DeliveryController extends Controller
                 'rider_id' => $riderId,
                 'status'   => 'accepted',
             ]);
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'rider', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+
+            try {
+                $order->user?->notify(new OrderStatusUpdatedNotification($order, 'accepted'));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Customer notification error (accepted): ' . $e->getMessage());
+            }
 
             return $this->apiSuccess('Order accepted successfully', ['order' => $this->formatOrder($order)]);
         }
@@ -131,7 +138,13 @@ class DeliveryController extends Controller
             }
 
             $order->update(['status' => 'picked_up']);
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'rider', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+
+            try {
+                $order->user?->notify(new OrderStatusUpdatedNotification($order, 'picked_up'));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Customer notification error (picked_up): ' . $e->getMessage());
+            }
 
             return $this->apiSuccess('Order picked up successfully', ['order' => $this->formatOrder($order)]);
         }
@@ -145,7 +158,13 @@ class DeliveryController extends Controller
             }
 
             $order->update(['status' => 'on_the_way']);
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'rider', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+
+            try {
+                $order->user?->notify(new OrderStatusUpdatedNotification($order, 'on_the_way'));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Customer notification error (on_the_way): ' . $e->getMessage());
+            }
 
             return $this->apiSuccess('Order is now on the way', ['order' => $this->formatOrder($order)]);
         }
@@ -227,13 +246,20 @@ class DeliveryController extends Controller
                 return $riderEarnings;
             });
 
-            $order->load(['merchantProfile', 'user', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
+            $order->load(['merchantProfile', 'user', 'rider', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
 
             // Notify Rider (Database Drawer + Expo Push)
             try {
                 $request->user()->notify(new \App\Notifications\Rider\DeliveryCompletedNotification($order, (float) $riderEarnings));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::error('Failed sending DeliveryCompletedNotification: ' . $e->getMessage());
+            }
+
+            // Notify Customer (Database Inbox + Expo Push + Delivery Email)
+            try {
+                $order->user?->notify(new OrderStatusUpdatedNotification($order, 'delivered'));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Customer notification error (delivered): ' . $e->getMessage());
             }
 
             return $this->apiSuccess('Delivery confirmed successfully and wallets updated!', ['order' => $this->formatOrder($order)]);
