@@ -25,6 +25,8 @@ return new class extends Migration
             $table->string('gender')->nullable(); // Male, Female, Other
             $table->date('date_of_birth')->nullable();
             $table->text('address')->nullable();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
 
             $table->timestamps();
         });

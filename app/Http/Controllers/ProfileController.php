@@ -46,6 +46,10 @@ class ProfileController extends Controller
             $userData['gender'] = $profile->gender;
             $userData['date_of_birth'] = $profile->date_of_birth ? $profile->date_of_birth->format('Y-m-d') : null;
             $userData['address'] = $profile->address; // Legacy address field
+            $userData['latitude'] = $profile->latitude !== null ? (float) $profile->latitude : null;
+            $userData['longitude'] = $profile->longitude !== null ? (float) $profile->longitude : null;
+            $userData['lat'] = $profile->latitude !== null ? (float) $profile->latitude : null;
+            $userData['lon'] = $profile->longitude !== null ? (float) $profile->longitude : null;
         }
 
         // Include all saved delivery addresses
@@ -108,6 +112,16 @@ class ProfileController extends Controller
         if (isset($validated['date_of_birth'])) $profileFields['date_of_birth'] = $validated['date_of_birth'];
         if (isset($validated['address'])) $profileFields['address'] = $validated['address'];
 
+        // Handle latitude / lat
+        if ($request->has('lat') || $request->has('latitude')) {
+            $profileFields['latitude'] = $request->input('lat', $request->input('latitude'));
+        }
+
+        // Handle longitude / lon
+        if ($request->has('lon') || $request->has('longitude')) {
+            $profileFields['longitude'] = $request->input('lon', $request->input('longitude'));
+        }
+
         if (!empty($userFields)) {
             $user->update($userFields);
         }
@@ -116,6 +130,30 @@ class ProfileController extends Controller
             $user->userProfile->update($profileFields);
         } elseif (!empty($profileFields)) {
             $user->userProfile()->create($profileFields);
+        }
+
+        // Keep merchantProfile coordinates in sync if merchant
+        if ($user->merchantProfile && ($request->has('lat') || $request->has('latitude') || $request->has('lon') || $request->has('longitude'))) {
+            $merchantCoords = [];
+            if ($request->has('lat') || $request->has('latitude')) {
+                $merchantCoords['latitude'] = $request->input('lat', $request->input('latitude'));
+            }
+            if ($request->has('lon') || $request->has('longitude')) {
+                $merchantCoords['longitude'] = $request->input('lon', $request->input('longitude'));
+            }
+            $user->merchantProfile->update($merchantCoords);
+        }
+
+        // Keep riderProfile coordinates in sync if rider
+        if ($user->riderProfile && ($request->has('lat') || $request->has('latitude') || $request->has('lon') || $request->has('longitude'))) {
+            $riderCoords = [];
+            if ($request->has('lat') || $request->has('latitude')) {
+                $riderCoords['latitude'] = $request->input('lat', $request->input('latitude'));
+            }
+            if ($request->has('lon') || $request->has('longitude')) {
+                $riderCoords['longitude'] = $request->input('lon', $request->input('longitude'));
+            }
+            $user->riderProfile->update($riderCoords);
         }
 
         $user->refresh();

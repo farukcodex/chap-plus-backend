@@ -21,6 +21,10 @@ class ProfileController extends Controller
             'gender' => 'sometimes|string|in:Male,Female,Other',
             'dob' => 'sometimes|date',
             'address' => 'sometimes|string|max:255',
+            'lat' => 'sometimes|nullable|numeric|between:-90,90',
+            'lon' => 'sometimes|nullable|numeric|between:-180,180',
+            'latitude' => 'sometimes|nullable|numeric|between:-90,90',
+            'longitude' => 'sometimes|nullable|numeric|between:-180,180',
             'country' => 'sometimes|string|size:2|alpha:ascii',
             'city' => 'sometimes|string|max:255',
             'mpesa_payout_number' => 'sometimes|string|max:20',
@@ -47,6 +51,17 @@ class ProfileController extends Controller
         if (isset($validated['gender'])) $profileFields['gender'] = $validated['gender'];
         if (isset($validated['dob'])) $profileFields['dob'] = $validated['dob'];
         if (isset($validated['address'])) $profileFields['address'] = $validated['address'];
+
+        // Handle latitude / lat
+        if ($request->has('lat') || $request->has('latitude')) {
+            $profileFields['latitude'] = $request->input('lat', $request->input('latitude'));
+        }
+
+        // Handle longitude / lon
+        if ($request->has('lon') || $request->has('longitude')) {
+            $profileFields['longitude'] = $request->input('lon', $request->input('longitude'));
+        }
+
         if (isset($validated['country'])) $profileFields['country'] = $validated['country'];
         if (isset($validated['city'])) $profileFields['city'] = $validated['city'];
         if (isset($validated['mpesa_payout_number'])) $profileFields['mpesa_payout_number'] = $validated['mpesa_payout_number'];
@@ -73,6 +88,14 @@ class ProfileController extends Controller
 
         if (!empty($profileFields)) {
             $profile->update($profileFields);
+
+            // Keep userProfile coordinates in sync if exists
+            if ($user->userProfile && (isset($profileFields['latitude']) || isset($profileFields['longitude']))) {
+                $syncCoords = [];
+                if (isset($profileFields['latitude'])) $syncCoords['latitude'] = $profileFields['latitude'];
+                if (isset($profileFields['longitude'])) $syncCoords['longitude'] = $profileFields['longitude'];
+                $user->userProfile->update($syncCoords);
+            }
         }
 
         if ($request->hasFile('profile_picture')) {
@@ -90,20 +113,19 @@ class ProfileController extends Controller
             'gender' => 'required|string|in:Male,Female,Other',
             'dob' => 'required|date',
             'address' => 'required|string|max:255',
-            // 'country' => 'required|string|size:2|alpha:ascii',
-            // 'city' => 'required|string|max:255',
+            'lat' => 'sometimes|nullable|numeric|between:-90,90',
+            'lon' => 'sometimes|nullable|numeric|between:-180,180',
+            'latitude' => 'sometimes|nullable|numeric|between:-90,90',
+            'longitude' => 'sometimes|nullable|numeric|between:-180,180',
         ]);
         
-        // Auto-detect Currency from Country code
-        // try {
-        //     $isoData = (new \League\ISO3166\ISO3166)->alpha2($validated['country']);
-        //     $validated['currency'] = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
-        // } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
-        //     return response()->json([
-        //         'message' => 'The provided country code is not a valid ISO 3166-1 alpha-2 code.',
-        //         'errors' => ['country' => ['Invalid country code.']]
-        //     ], 422);
-        // }
+        if ($request->has('lat') || $request->has('latitude')) {
+            $validated['latitude'] = $request->input('lat', $request->input('latitude'));
+        }
+        if ($request->has('lon') || $request->has('longitude')) {
+            $validated['longitude'] = $request->input('lon', $request->input('longitude'));
+        }
+        unset($validated['lat'], $validated['lon']);
 
         // Update the rest on the RiderProfile table
         $profile = $request->user()->riderProfile;

@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('gender')->nullable();
             $table->date('dob')->nullable();
             $table->string('address')->nullable();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
             
             $table->string('country', 2)->nullable();
             $table->string('city')->nullable();

@@ -38,6 +38,10 @@ class ProfileUpdateRequest extends FormRequest
             'gender'        => ['sometimes', 'nullable', 'string', 'in:Male,Female,Other'],
             'date_of_birth' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'address'       => ['sometimes', 'nullable', 'string'],
+            'lat'           => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'lon'           => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'latitude'      => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude'     => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
             'profile_photo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ];
     }
