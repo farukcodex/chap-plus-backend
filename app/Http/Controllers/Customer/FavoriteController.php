@@ -15,15 +15,29 @@ class FavoriteController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $favorites = Favorite::with('product')
-            ->where('user_id', $request->user()->id)
-            ->get()
+        $query = Favorite::with(['product.images', 'product.variants', 'product.merchantProfile'])
+            ->where('user_id', $request->user()->id);
+
+        if ($request->is('*restaurant*') || $request->query('type') === 'restaurant') {
+            $query->whereHas('product.merchantProfile.user.roles', function ($r) {
+                $r->where('name', 'RESTAURANT_MERCHANT');
+            });
+        } elseif ($request->is('*ecommerce*') || $request->query('type') === 'ecommerce') {
+            $query->whereHas('product.merchantProfile.user.roles', function ($r) {
+                $r->where('name', 'ECOMMERCE_MERCHANT');
+            });
+        }
+
+        $favorites = $query->get()
             ->map(function ($favorite) {
                 $product = $favorite->product;
-                // Add is_favorite boolean true for UI convenience
-                $product->is_favorite = true;
+                if ($product) {
+                    $product->is_favorite = true;
+                }
                 return $product;
-            });
+            })
+            ->filter()
+            ->values();
 
         return $this->apiSuccess('Favorites retrieved successfully', ['products' => $favorites]);
     }

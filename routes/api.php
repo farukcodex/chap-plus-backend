@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
@@ -101,6 +101,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/bookings/{id}/cancel', [\App\Http\Controllers\Customer\BusController::class, 'cancelBooking']);
     });
 
+    // Shared Customer Delivery Addresses
+    Route::prefix('addresses')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Customer\UserAddressController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Customer\UserAddressController::class, 'store']);
+        Route::delete('/{id}', [\App\Http\Controllers\Customer\UserAddressController::class, 'destroy']);
+    });
+
     // Customer E-commerce
     Route::prefix('ecommerce')->group(function () {
         Route::get('/home', [\App\Http\Controllers\Customer\EcommerceController::class, 'home']);
@@ -134,11 +141,40 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/{id}/review', [\App\Http\Controllers\Customer\OrderController::class, 'review']);
             Route::get('/{id}/tracking', [\App\Http\Controllers\Customer\OrderController::class, 'tracking']);
         });
+    });
 
-        Route::prefix('addresses')->group(function () {
-            Route::get('/', [\App\Http\Controllers\Customer\UserAddressController::class, 'index']);
-            Route::post('/', [\App\Http\Controllers\Customer\UserAddressController::class, 'store']);
-            Route::delete('/{id}', [\App\Http\Controllers\Customer\UserAddressController::class, 'destroy']);
+    // Customer Restaurant (Food Delivery)
+    Route::prefix('restaurant')->group(function () {
+        Route::get('/home', [\App\Http\Controllers\Customer\RestaurantController::class, 'home']);
+        Route::get('/categories', [\App\Http\Controllers\Customer\RestaurantController::class, 'categories']);
+        Route::get('/restaurants', [\App\Http\Controllers\Customer\RestaurantController::class, 'restaurants']);
+        Route::get('/restaurants/{id}', [\App\Http\Controllers\Customer\RestaurantController::class, 'restaurantDetails']);
+        Route::get('/foods', [\App\Http\Controllers\Customer\RestaurantController::class, 'foods']);
+        Route::get('/foods/{id}', [\App\Http\Controllers\Customer\RestaurantController::class, 'showFood']);
+        Route::post('/foods/{id}/reviews', [\App\Http\Controllers\Customer\RestaurantController::class, 'addReview']);
+
+        Route::prefix('favorites')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\FavoriteController::class, 'index']);
+            Route::post('/{id}', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggle']);
+        });
+
+        Route::prefix('cart')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\RestaurantCartController::class, 'getCart']);
+            Route::post('/add', [\App\Http\Controllers\Customer\RestaurantCartController::class, 'addToCart']);
+            Route::put('/items/{id}', [\App\Http\Controllers\Customer\RestaurantCartController::class, 'updateCartItem']);
+            Route::delete('/items/{id}', [\App\Http\Controllers\Customer\RestaurantCartController::class, 'removeFromCart']);
+            Route::delete('/clear', [\App\Http\Controllers\Customer\RestaurantCartController::class, 'clearCart']);
+        });
+
+        Route::post('/checkout', [\App\Http\Controllers\Customer\RestaurantCheckoutController::class, 'processCheckout']);
+        Route::post('/orders/{id}/retry-payment', [\App\Http\Controllers\Customer\RestaurantCheckoutController::class, 'retryPayment']);
+
+        Route::prefix('orders')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\RestaurantOrderController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Customer\RestaurantOrderController::class, 'show']);
+            Route::post('/{id}/cancel', [\App\Http\Controllers\Customer\RestaurantOrderController::class, 'cancel']);
+            Route::post('/{id}/review', [\App\Http\Controllers\Customer\RestaurantOrderController::class, 'review']);
+            Route::get('/{id}/tracking', [\App\Http\Controllers\Customer\RestaurantOrderController::class, 'tracking']);
         });
     });
 });

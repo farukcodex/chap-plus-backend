@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('order_number')->nullable()->unique();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->unsignedBigInteger('merchant_profile_id')->nullable(); 
+            $table->enum('type', ['ecommerce', 'restaurant'])->default('ecommerce');
             // In a real app, an order might have items from multiple merchants, 
             // but usually it's split. We'll link merchant_profile_id.
             

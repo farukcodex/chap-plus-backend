@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Customer;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-
+use App\Http\Resources\Customer\RestaurantOrderResource;
 use App\Models\Order;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 
-class OrderController extends Controller
+class RestaurantOrderController extends Controller
 {
     use ApiResponseTrait;
 
@@ -17,8 +18,8 @@ class OrderController extends Controller
     {
         $filter = $request->query('filter', 'active'); // active, completed, cancelled
 
-        $query = Order::ecommerce()
-            ->with(['items.product.images', 'merchantProfile', 'address'])
+        $query = Order::restaurant()
+            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'address', 'rider'])
             ->where('user_id', $request->user()->id);
 
         if ($filter === 'active') {
@@ -30,29 +31,30 @@ class OrderController extends Controller
         }
 
         $orders = $query->latest()->paginate(10);
+        $orders->through(fn($order) => (new RestaurantOrderResource($order))->toArray($request));
 
-        return $this->apiSuccess('Orders retrieved successfully', ['orders' => $orders]);
+        return $this->apiSuccess('Restaurant orders retrieved successfully', ['orders' => $orders]);
     }
 
     public function show(Request $request, string $id): JsonResponse
     {
-        $order = Order::ecommerce()
+        $order = Order::restaurant()
             ->with(['items.product.images', 'items.variant', 'merchantProfile', 'rider', 'address'])
             ->where('user_id', $request->user()->id)
             ->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
+            return $this->apiError('Food order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
-        $orderData = $order->toArray();
+        $orderData = (new RestaurantOrderResource($order))->toArray($request);
         $orderData['live_location'] = null;
 
         if (in_array($order->status, ['picked_up', 'on_the_way'])) {
-            $orderData['live_location'] = \Illuminate\Support\Facades\Cache::get('order_' . $order->id . '_location');
+            $orderData['live_location'] = Cache::get('order_' . $order->id . '_location');
         }
 
-        return $this->apiSuccess('Order details retrieved', ['order' => $orderData]);
+        return $this->apiSuccess('Food order details retrieved', ['order' => $orderData]);
     }
 
     public function cancel(Request $request, string $id): JsonResponse
@@ -61,14 +63,14 @@ class OrderController extends Controller
             'reason' => 'required|string|max:255'
         ]);
 
-        $order = Order::ecommerce()->where('user_id', $request->user()->id)->find($id);
+        $order = Order::restaurant()->where('user_id', $request->user()->id)->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
+            return $this->apiError('Food order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
         if (!in_array($order->status, ['pending_payment', 'paid'])) {
-            return $this->apiError("You cannot cancel an order that is already {$order->status}", 400, ['code' => 'INVALID_ORDER_STATUS']);
+            return $this->apiError("You cannot cancel a food order that is already {$order->status}", 400, ['code' => 'INVALID_ORDER_STATUS']);
         }
 
         $order->update([
@@ -76,7 +78,11 @@ class OrderController extends Controller
             'cancellation_reason' => $validated['reason']
         ]);
 
-        return $this->apiSuccess('Order cancelled successfully', ['order' => $order]);
+        $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+
+        return $this->apiSuccess('Food order cancelled successfully', [
+            'order' => new RestaurantOrderResource($order)
+        ]);
     }
 
     public function review(Request $request, string $id): JsonResponse
@@ -86,14 +92,14 @@ class OrderController extends Controller
             'review_comment' => 'nullable|string|max:1000'
         ]);
 
-        $order = Order::ecommerce()->where('user_id', $request->user()->id)->find($id);
+        $order = Order::restaurant()->where('user_id', $request->user()->id)->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
+            return $this->apiError('Food order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
         if ($order->status !== 'delivered') {
-            return $this->apiError('You can only review delivered orders', 400, ['code' => 'INVALID_ORDER_STATUS']);
+            return $this->apiError('You can only review delivered food orders', 400, ['code' => 'INVALID_ORDER_STATUS']);
         }
 
         $order->update([
@@ -101,29 +107,33 @@ class OrderController extends Controller
             'review_comment' => $validated['review_comment'] ?? null
         ]);
 
-        return $this->apiSuccess('Review submitted successfully', ['order' => $order]);
+        $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+
+        return $this->apiSuccess('Food review submitted successfully', [
+            'order' => new RestaurantOrderResource($order)
+        ]);
     }
 
     public function tracking(Request $request, string $id): JsonResponse
     {
-        $order = Order::ecommerce()->with(['rider.riderProfile'])->where('user_id', $request->user()->id)->find($id);
+        $order = Order::restaurant()->with(['rider.riderProfile'])->where('user_id', $request->user()->id)->find($id);
 
         if (!$order) {
-            return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
+            return $this->apiError('Food order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
-        // Timeline data for the UI
+        // Timeline data for food delivery
         $timeline = [
             'order_confirmed' => in_array($order->status, ['paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
-            'preparing' => in_array($order->status, ['processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'kitchen_preparing' => in_array($order->status, ['processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
             'ready_for_pickup' => in_array($order->status, ['ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
-            'accepted' => in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'rider_assigned' => in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered']),
             'picked_up' => in_array($order->status, ['picked_up', 'on_the_way', 'delivered']),
             'on_the_way' => in_array($order->status, ['on_the_way', 'delivered']),
             'delivered' => $order->status === 'delivered',
         ];
 
-        return $this->apiSuccess('Order tracking info retrieved', [
+        return $this->apiSuccess('Food order tracking info retrieved', [
             'status' => $order->status,
             'delivery_otp' => $order->delivery_otp,
             'timeline' => $timeline,

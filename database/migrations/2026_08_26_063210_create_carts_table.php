@@ -14,7 +14,10 @@ return new class extends Migration
         Schema::create('carts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->enum('type', ['ecommerce', 'restaurant'])->default('ecommerce');
             $table->timestamps();
+
+            $table->unique(['user_id', 'type'], 'carts_user_id_type_unique');
         });
     }
 

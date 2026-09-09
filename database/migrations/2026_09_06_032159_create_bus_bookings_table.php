@@ -15,7 +15,11 @@ return new class extends Migration
             $table->foreignId('bus_id')->constrained()->cascadeOnDelete();
             $table->date('travel_date');
             $table->json('seat_numbers');
+            $table->string('passenger_name')->nullable();
+            $table->string('passenger_phone')->nullable();
+            $table->string('passenger_email')->nullable();
             $table->decimal('total_price', 10, 2);
+            $table->string('payment_method')->default('mpesa');
             $table->enum('status', ['pending_payment', 'paid', 'cancelled', 'failed'])->default('pending_payment');
             $table->string('mpesa_receipt_number')->nullable();
             $table->string('mpesa_checkout_request_id')->nullable();

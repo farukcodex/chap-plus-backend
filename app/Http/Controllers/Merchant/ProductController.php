@@ -104,6 +104,12 @@ class ProductController extends Controller
             'variants.*.stock_quantity' => 'required|integer|min:0',
         ]);
 
+        $expectedType = $request->user()->hasRole('RESTAURANT_MERCHANT') ? 'restaurant' : 'ecommerce';
+        $category = \App\Models\ProductCategory::find($validated['category_id']);
+        if ($category && $category->type && $category->type !== $expectedType) {
+            return $this->apiError("The selected category does not match your merchant store type ({$expectedType}).", 422);
+        }
+
         try {
             DB::beginTransaction();
 
@@ -219,6 +225,14 @@ class ProductController extends Controller
             'variants.*.price_adjustment' => 'nullable|numeric',
             'variants.*.stock_quantity' => 'required|integer|min:0',
         ]);
+
+        if (isset($validated['category_id'])) {
+            $expectedType = $request->user()->hasRole('RESTAURANT_MERCHANT') ? 'restaurant' : 'ecommerce';
+            $category = \App\Models\ProductCategory::find($validated['category_id']);
+            if ($category && $category->type && $category->type !== $expectedType) {
+                return $this->apiError("The selected category does not match your merchant store type ({$expectedType}).", 422);
+            }
+        }
 
         try {
             DB::beginTransaction();

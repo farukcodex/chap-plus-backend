@@ -41,7 +41,10 @@ class CheckoutController extends Controller
         ]);
 
         $user = $request->user();
-        $cart = Cart::with(['items.product.merchantProfile', 'items.variant'])->where('user_id', $user->id)->first();
+        $cart = Cart::with(['items.product.merchantProfile', 'items.variant'])
+            ->where('user_id', $user->id)
+            ->where('type', 'ecommerce')
+            ->first();
 
         if (!$cart || $cart->items->isEmpty()) {
             return $this->apiError('Your cart is empty', 400);
@@ -83,6 +86,7 @@ class CheckoutController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'merchant_profile_id' => $merchantId,
+                'type' => 'ecommerce',
                 'total_amount' => $total,
                 'delivery_fee' => $deliveryFee,
                 'user_address_id' => $userAddress->id,

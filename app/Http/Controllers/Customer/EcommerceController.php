@@ -17,42 +17,35 @@ class EcommerceController extends Controller
 
     public function home(Request $request): JsonResponse
     {
-        // Fetch Main Categories (global only)
-        $categoriesQuery = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+        // Fetch Main Categories (global e-commerce categories)
+        $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
             ->whereNull('parent_id')
-            ->whereNull('merchant_profile_id');
+            ->whereNull('merchant_profile_id')
+            ->where('type', 'ecommerce')
+            ->with(['subcategories' => function($query) {
+                $query->select('id', 'name', 'slug', 'parent_id', 'type')
+                      ->whereNull('merchant_profile_id')
+                      ->where('type', 'ecommerce');
+            }])->get();
             
-        // Fetch featured products
+        // Fetch featured products from e-commerce merchants
         $productsQuery = Product::with(['images', 'variants'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->where('is_active', true);
-
-        // Apply type filter if provided (e.g. ?type=ecommerce or ?type=restaurant)
-        if ($request->filled('type')) {
-            $type = strtolower($request->type);
-            $roleName = strtoupper($type) . '_MERCHANT';
-
-            $categoriesQuery->where('type', $type);
-            $productsQuery->whereHas('merchantProfile.user.roles', function($r) use ($roleName) {
-                $r->where('name', $roleName);
+            ->where('is_active', true)
+            ->whereHas('merchantProfile.user.roles', function($r) {
+                $r->where('name', 'ECOMMERCE_MERCHANT');
             });
-        }
 
-        $categories = $categoriesQuery->with(['subcategories' => function($query) use ($request) {
-            $query->select('id', 'name', 'slug', 'parent_id', 'type')
-                  ->whereNull('merchant_profile_id');
-            if ($request->filled('type')) {
-                $query->where('type', strtolower($request->type));
+        $userCountry = $request->user()?->userProfile?->country ?? null;
+        $country = $request->query('country', $userCountry);
+        if ($country && $country !== 'all') {
+            $hasMerchants = \App\Models\MerchantProfile::where('country', $country)
+                ->whereHas('user.roles', fn($r) => $r->where('name', 'ECOMMERCE_MERCHANT'))
+                ->exists();
+            if ($hasMerchants) {
+                $productsQuery->whereHas('merchantProfile', fn($q) => $q->where('country', $country));
             }
-        }])->get();
-        
-        $userCountry = $request->user()->userProfile->country ?? null;
-
-        if ($userCountry) {
-            $productsQuery->whereHas('merchantProfile', function ($q) use ($userCountry) {
-                $q->where('country', $userCountry);
-            });
         }
 
         $featuredProducts = $productsQuery->latest()->take(10)->get();
@@ -73,23 +66,16 @@ class EcommerceController extends Controller
 
     public function categories(Request $request): JsonResponse
     {
-        $query = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type');
-
-        // Only fetch global categories
-        $query->whereNull('merchant_profile_id');
-
-        if ($request->filled('type')) {
-            $query->where('type', strtolower($request->type));
-        }
+        $query = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+            ->whereNull('merchant_profile_id')
+            ->where('type', 'ecommerce');
 
         // Only attach the nested subcategories array if we haven't explicitly turned it off
         if ($request->boolean('include_subcategories', true)) {
-            $query->with(['subcategories' => function($q) use ($request) {
+            $query->with(['subcategories' => function($q) {
                 $q->select('id', 'name', 'slug', 'parent_id', 'type')
-                  ->whereNull('merchant_profile_id');
-                if ($request->filled('type')) {
-                    $q->where('type', strtolower($request->type));
-                }
+                  ->whereNull('merchant_profile_id')
+                  ->where('type', 'ecommerce');
             }]);
         }
 
@@ -117,36 +103,36 @@ class EcommerceController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $userCountry = $request->user()->userProfile->country ?? null;
+        $userCountry = $request->user()?->userProfile?->country ?? null;
 
         $query = Product::with(['images', 'variants'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->where('is_active', true);
+            ->where('is_active', true)
+            ->whereHas('merchantProfile.user.roles', function($r) {
+                $r->where('name', 'ECOMMERCE_MERCHANT');
+            });
             
-        if ($userCountry) {
-            $query->whereHas('merchantProfile', function ($q) use ($userCountry) {
-                $q->where('country', $userCountry);
-            });
-        }
-
-        if ($request->filled('type')) {
-            $roleName = strtoupper($request->type) . '_MERCHANT';
-            $query->whereHas('merchantProfile.user.roles', function($r) use ($roleName) {
-                $r->where('name', $roleName);
-            });
+        $country = $request->query('country', $userCountry);
+        if ($country && $country !== 'all') {
+            $hasMerchants = \App\Models\MerchantProfile::where('country', $country)
+                ->whereHas('user.roles', fn($r) => $r->where('name', 'ECOMMERCE_MERCHANT'))
+                ->exists();
+            if ($hasMerchants) {
+                $query->whereHas('merchantProfile', fn($q) => $q->where('country', $country));
+            }
         }
 
         // Filter by Merchant Store
-        if ($request->has('merchant_profile_id')) {
+        if ($request->filled('merchant_profile_id')) {
             $query->where('merchant_profile_id', $request->merchant_profile_id);
         }
 
         // Filter by Category (Smart enough to handle Main Categories AND Subcategories)
-        if ($request->has('category_id') || $request->has('category_slug')) {
+        if ($request->filled('category_id') || $request->filled('category_slug')) {
             $categoryQuery = ProductCategory::query();
             
-            if ($request->has('category_id')) {
+            if ($request->filled('category_id')) {
                 $categoryQuery->where('id', $request->category_id);
             } else {
                 $categoryQuery->where('slug', $request->category_slug);
@@ -169,7 +155,7 @@ class EcommerceController extends Controller
         }
 
         // Search
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
@@ -178,15 +164,15 @@ class EcommerceController extends Controller
         }
 
         // Price filtering
-        if ($request->has('min_price')) {
+        if ($request->filled('min_price')) {
             $query->where('base_price', '>=', $request->min_price);
         }
-        if ($request->has('max_price')) {
+        if ($request->filled('max_price')) {
             $query->where('base_price', '<=', $request->max_price);
         }
 
         // Color filtering (queries the JSON 'attributes' column on variants)
-        if ($request->has('color')) {
+        if ($request->filled('color')) {
             $query->whereHas('variants', function($q) use ($request) {
                 // E.g. where attributes->Color = 'Black'
                 $q->where('attributes->Color', $request->color)
@@ -195,7 +181,7 @@ class EcommerceController extends Controller
         }
 
         // Size filtering (queries the JSON 'attributes' column on variants)
-        if ($request->has('size')) {
+        if ($request->filled('size')) {
             $query->whereHas('variants', function($q) use ($request) {
                 // E.g. where attributes->Size = 'XL'
                 $q->where('attributes->Size', $request->size)
@@ -204,7 +190,7 @@ class EcommerceController extends Controller
         }
 
         // Gender filtering (queries the JSON 'attributes' column on variants)
-        if ($request->has('gender')) {
+        if ($request->filled('gender')) {
             $query->whereHas('variants', function($q) use ($request) {
                 // E.g. where attributes->Gender = 'Men'
                 $q->where('attributes->Gender', $request->gender)
@@ -218,7 +204,7 @@ class EcommerceController extends Controller
         }
 
         // Sorting
-        if ($request->has('sort')) {
+        if ($request->filled('sort')) {
             switch ($request->sort) {
                 case 'price_asc':
                     $query->orderBy('base_price', 'asc');
@@ -230,8 +216,6 @@ class EcommerceController extends Controller
                     $query->orderBy('reviews_avg_rating', 'desc');
                     break;
                 case 'newest':
-                    $query->latest();
-                    break;
                 default:
                     $query->latest();
                     break;
@@ -364,16 +348,12 @@ class EcommerceController extends Controller
         $query = \App\Models\MerchantProfile::withAvg('reviews', 'rating')
             ->withCount('reviews');
 
-        // Filter by vertical/service type based on user role
-        if ($request->filled('type')) {
-            $roleName = strtoupper($request->type) . '_MERCHANT'; 
+        // Filter strictly to ECOMMERCE_MERCHANT
+        $query->whereHas('user.roles', function($q) {
+            $q->where('name', 'ECOMMERCE_MERCHANT');
+        });
 
-            $query->whereHas('user.roles', function($q) use ($roleName) {
-                $q->where('name', $roleName);
-            });
-        }
-
-        if ($request->has('lat') && $request->has('lng')) {
+        if ($request->filled('lat') && $request->filled('lng')) {
             $lat = $request->lat;
             $lng = $request->lng;
             // Haversine formula for distance in kilometers
@@ -391,9 +371,12 @@ class EcommerceController extends Controller
     public function storeDetails(Request $request, string $id): JsonResponse
     {
         $query = \App\Models\MerchantProfile::withAvg('reviews', 'rating')
-            ->withCount('reviews');
+            ->withCount('reviews')
+            ->whereHas('user.roles', function($q) {
+                $q->where('name', 'ECOMMERCE_MERCHANT');
+            });
 
-        if ($request->has('lat') && $request->has('lng')) {
+        if ($request->filled('lat') && $request->filled('lng')) {
             $lat = $request->lat;
             $lng = $request->lng;
             $query->selectRaw("merchant_profiles.*, ( 6371 * acos( cos( radians(?) ) * cos( radians( latitude ) ) * cos( radians( longitude ) - radians(?) ) + sin( radians(?) ) * sin( radians( latitude ) ) ) ) AS distance_km", [$lat, $lng, $lat]);

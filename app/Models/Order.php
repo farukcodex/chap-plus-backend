@@ -9,12 +9,22 @@ class Order extends Model
 {
     use HasFactory;
     protected $fillable = [
-        'order_number', 'user_id', 'merchant_profile_id', 'total_amount', 'delivery_fee', 
+        'order_number', 'user_id', 'merchant_profile_id', 'type', 'total_amount', 'delivery_fee', 
         'status', 'user_address_id', 'payment_method', 
         'mpesa_checkout_request_id', 'mpesa_receipt_number',
         'rider_id', 'cancellation_reason', 'rating', 'review_comment',
         'delivery_otp', 'distance_km', 'duration_minute',
     ];
+
+    public function scopeEcommerce($query)
+    {
+        return $query->where('type', 'ecommerce');
+    }
+
+    public function scopeRestaurant($query)
+    {
+        return $query->where('type', 'restaurant');
+    }
 
     protected static function booted(): void
     {

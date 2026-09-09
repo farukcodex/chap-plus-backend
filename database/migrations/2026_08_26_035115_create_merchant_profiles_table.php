@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('country');
             $table->string('city');
             $table->string('currency', 3)->nullable(); // e.g., 'USD', 'CAD', 'BDT'
+            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
             
             $table->string('business_name')->nullable(); 
             $table->text('address')->nullable();

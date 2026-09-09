@@ -27,9 +27,9 @@ class DummyMerchantSeeder extends Seeder
                     'phone_number' => '+25472000000' . $i,
                     'latitude' => 23.7750 + ($i * 0.002),
                     'longitude' => 90.3950 + ($i * 0.002),
-                    'country' => 'US',
-                    'city' => 'New York',
-                    'currency' => 'USD'
+                    'country' => 'KE',
+                    'city' => 'Nairobi',
+                    'currency' => 'KES'
                 ]
             );
         }
@@ -49,9 +49,9 @@ class DummyMerchantSeeder extends Seeder
                     'phone_number' => '+25473000000' . $i,
                     'latitude' => 23.7850 + ($i * 0.002),
                     'longitude' => 90.4050 + ($i * 0.002),
-                    'country' => 'US',
-                    'city' => 'New York',
-                    'currency' => 'USD'
+                    'country' => 'KE',
+                    'city' => 'Nairobi',
+                    'currency' => 'KES'
                 ]
             );
         }
@@ -71,9 +71,9 @@ class DummyMerchantSeeder extends Seeder
                     'phone_number' => '+25474000000' . $i,
                     'latitude' => 23.7900 + ($i * 0.002),
                     'longitude' => 90.4100 + ($i * 0.002),
-                    'country' => 'US',
-                    'city' => 'New York',
-                    'currency' => 'USD'
+                    'country' => 'KE',
+                    'city' => 'Nairobi',
+                    'currency' => 'KES'
                 ]
             );
         }
