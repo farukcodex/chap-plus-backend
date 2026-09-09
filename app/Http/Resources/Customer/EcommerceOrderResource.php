@@ -6,7 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class RestaurantOrderResource extends JsonResource
+class EcommerceOrderResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -25,7 +25,7 @@ class RestaurantOrderResource extends JsonResource
         $data = [
             'id'              => (int) $this->id,
             'order_number'    => (string) $this->order_number,
-            'type'            => 'restaurant',
+            'type'            => 'ecommerce',
             'status'          => (string) $this->status,
             'payment_method'  => (string) $this->payment_method,
             'currency'        => (string) ($merchant?->currency ?? 'KES'),
@@ -37,11 +37,13 @@ class RestaurantOrderResource extends JsonResource
             'duration_minute' => $this->duration_minute !== null ? (int) $this->duration_minute : null,
         ];
 
-        // Clean Restaurant summary
-        $data['restaurant'] = $merchant ? [
+        // Clean Store summary
+        $data['store'] = $merchant ? [
             'id'            => (int) $merchant->id,
             'business_name' => (string) $merchant->business_name,
             'address'       => $merchant->address,
+            'city'          => $merchant->city,
+            'country'       => $merchant->country,
             'phone_number'  => $merchant->phone_number,
             'profile_image' => $merchant->profile_image_url,
         ] : null;
@@ -56,7 +58,7 @@ class RestaurantOrderResource extends JsonResource
             'longitude'    => $address->longitude !== null ? (float) $address->longitude : null,
         ] : null;
 
-        // Clean Ordered Food Items
+        // Clean Ordered Products Items
         if ($this->items && $this->items->isNotEmpty()) {
             $data['items'] = $this->items->map(function ($item) {
                 $product = $item->product;
@@ -69,13 +71,14 @@ class RestaurantOrderResource extends JsonResource
                 return [
                     'id'          => (int) $item->id,
                     'product_id'  => (int) $item->product_id,
-                    'name'        => (string) ($product?->name ?? 'Unknown Food'),
+                    'name'        => (string) ($product?->name ?? 'Unknown Product'),
                     'quantity'    => $quantity,
                     'price'       => $price,
                     'total_price' => (float) round($price * $quantity, 2),
                     'image'       => $primaryImage,
                     'variant'     => $variant ? [
                         'id'         => (int) $variant->id,
+                        'sku'        => $variant->sku,
                         'attributes' => $variant->attributes,
                     ] : null,
                 ];

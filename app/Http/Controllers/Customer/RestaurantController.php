@@ -9,6 +9,7 @@ use App\Models\ProductCategory;
 use App\Models\MerchantProfile;
 use App\Models\ProductReview;
 use App\Models\Favorite;
+use App\Http\Resources\Customer\RestaurantFoodResource;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -35,7 +36,7 @@ class RestaurantController extends Controller
             ->get();
 
         // 2. Fetch Featured Foods
-        $foodsQuery = Product::with(['images', 'variants'])
+        $foodsQuery = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
@@ -67,9 +68,9 @@ class RestaurantController extends Controller
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
 
-        $featuredFoods->transform(function ($food) use ($favoriteIds) {
+        $transformedFoods = $featuredFoods->map(function ($food) use ($favoriteIds, $request) {
             $food->is_favorite = in_array($food->id, $favoriteIds);
-            return $food;
+            return (new RestaurantFoodResource($food))->toArray($request);
         });
 
         if ($request->filled('lat') && $request->filled('lng')) {
@@ -85,7 +86,7 @@ class RestaurantController extends Controller
 
         return $this->apiSuccess('Restaurant home data retrieved', [
             'cuisines' => $cuisines,
-            'featured_foods' => $featuredFoods,
+            'featured_foods' => $transformedFoods,
             'featured_restaurants' => $featuredRestaurants,
         ]);
     }
@@ -183,7 +184,7 @@ class RestaurantController extends Controller
         }
 
         // Fetch highly recommended / top-rated foods
-        $highlyRecommended = Product::with(['images', 'variants'])
+        $highlyRecommended = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->where('is_active', true)
             ->where('merchant_profile_id', $restaurant->id)
@@ -193,7 +194,7 @@ class RestaurantController extends Controller
             ->get();
 
         if ($highlyRecommended->isEmpty()) {
-            $highlyRecommended = Product::with(['images', 'variants'])
+            $highlyRecommended = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
                 ->withAvg('reviews', 'rating')
                 ->where('is_active', true)
                 ->where('merchant_profile_id', $restaurant->id)
@@ -203,16 +204,29 @@ class RestaurantController extends Controller
         }
 
         // Fetch full restaurant menu items
-        $menuItems = Product::with(['images', 'variants', 'category'])
+        $menuItems = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->where('is_active', true)
             ->where('merchant_profile_id', $restaurant->id)
             ->latest()
             ->get();
 
+        $user = Auth::guard('sanctum')->user();
+        $favoriteIds = $user ? Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
+
+        $transformedRecommended = $highlyRecommended->map(function ($food) use ($favoriteIds, $request) {
+            $food->is_favorite = in_array($food->id, $favoriteIds);
+            return (new RestaurantFoodResource($food))->toArray($request);
+        });
+
+        $transformedMenu = $menuItems->map(function ($food) use ($favoriteIds, $request) {
+            $food->is_favorite = in_array($food->id, $favoriteIds);
+            return (new RestaurantFoodResource($food))->toArray($request);
+        });
+
         return $this->apiSuccess('Restaurant details retrieved', [
             'restaurant' => $restaurant,
-            'highly_recommended' => $highlyRecommended,
-            'menu' => $menuItems,
+            'highly_recommended' => $transformedRecommended,
+            'menu' => $transformedMenu,
         ]);
     }
 
@@ -221,7 +235,7 @@ class RestaurantController extends Controller
      */
     public function foods(Request $request): JsonResponse
     {
-        $query = Product::with(['images', 'variants', 'merchantProfile'])
+        $query = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
@@ -322,9 +336,9 @@ class RestaurantController extends Controller
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
 
-        $foods->getCollection()->transform(function ($food) use ($favoriteIds) {
+        $foods->through(function ($food) use ($favoriteIds, $request) {
             $food->is_favorite = in_array($food->id, $favoriteIds);
-            return $food;
+            return (new RestaurantFoodResource($food))->toArray($request);
         });
 
         return $this->apiSuccess('Foods retrieved', ['foods' => $foods]);
@@ -333,14 +347,14 @@ class RestaurantController extends Controller
     /**
      * Show food item details, options/variants, and reviews.
      */
-    public function showFood(string $id): JsonResponse
+    public function showFood(Request $request, string $id): JsonResponse
     {
         $food = Product::with([
                 'images',
                 'variants',
-                'category',
+                'category.parent',
                 'merchantProfile',
-                'reviews.user.userProfile',
+                'reviews.user',
             ])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
@@ -355,7 +369,7 @@ class RestaurantController extends Controller
         }
 
         // Related foods from the same restaurant or category
-        $relatedFoods = Product::with(['images', 'variants'])
+        $relatedFoods = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
@@ -366,31 +380,19 @@ class RestaurantController extends Controller
             ->get();
 
         $user = Auth::guard('sanctum')->user();
-        if ($user) {
-            $food->is_favorite = Favorite::where('user_id', $user->id)
-                ->where('product_id', $food->id)
-                ->exists();
+        $favIds = $user ? Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
 
-            $favIds = Favorite::where('user_id', $user->id)
-                ->whereIn('product_id', $relatedFoods->pluck('id'))
-                ->pluck('product_id')
-                ->toArray();
+        $food->is_favorite = in_array($food->id, $favIds);
+        $foodData = (new RestaurantFoodResource($food))->toArray($request);
 
-            $relatedFoods->transform(function ($rf) use ($favIds) {
-                $rf->is_favorite = in_array($rf->id, $favIds);
-                return $rf;
-            });
-        } else {
-            $food->is_favorite = false;
-            $relatedFoods->transform(function ($rf) {
-                $rf->is_favorite = false;
-                return $rf;
-            });
-        }
+        $transformedRelated = $relatedFoods->map(function ($rf) use ($favIds, $request) {
+            $rf->is_favorite = in_array($rf->id, $favIds);
+            return (new RestaurantFoodResource($rf))->toArray($request);
+        });
 
         return $this->apiSuccess('Food details retrieved', [
-            'food' => $food,
-            'related_foods' => $relatedFoods,
+            'food' => $foodData,
+            'related_foods' => $transformedRelated,
         ]);
     }
 

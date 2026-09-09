@@ -9,16 +9,21 @@ use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+use App\Http\Resources\Customer\RestaurantFoodResource;
+use App\Http\Resources\Customer\EcommerceProductResource;
+
 class FavoriteController extends Controller
 {
     use ApiResponseTrait;
 
     public function index(Request $request): JsonResponse
     {
-        $query = Favorite::with(['product.images', 'product.variants', 'product.merchantProfile'])
+        $query = Favorite::with(['product.images', 'product.variants', 'product.category.parent', 'product.merchantProfile'])
             ->where('user_id', $request->user()->id);
 
-        if ($request->is('*restaurant*') || $request->query('type') === 'restaurant') {
+        $isRestaurant = $request->is('*restaurant*') || $request->query('type') === 'restaurant';
+
+        if ($isRestaurant) {
             $query->whereHas('product.merchantProfile.user.roles', function ($r) {
                 $r->where('name', 'RESTAURANT_MERCHANT');
             });
@@ -29,12 +34,16 @@ class FavoriteController extends Controller
         }
 
         $favorites = $query->get()
-            ->map(function ($favorite) {
+            ->map(function ($favorite) use ($request, $isRestaurant) {
                 $product = $favorite->product;
-                if ($product) {
-                    $product->is_favorite = true;
+                if (!$product) {
+                    return null;
                 }
-                return $product;
+                $product->is_favorite = true;
+                if ($isRestaurant) {
+                    return (new RestaurantFoodResource($product))->toArray($request);
+                }
+                return (new EcommerceProductResource($product))->toArray($request);
             })
             ->filter()
             ->values();

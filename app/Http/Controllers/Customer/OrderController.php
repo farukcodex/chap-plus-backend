@@ -4,10 +4,11 @@ namespace App\Http\Controllers\Customer;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-
+use App\Http\Resources\Customer\EcommerceOrderResource;
 use App\Models\Order;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 
 class OrderController extends Controller
 {
@@ -18,7 +19,7 @@ class OrderController extends Controller
         $filter = $request->query('filter', 'active'); // active, completed, cancelled
 
         $query = Order::ecommerce()
-            ->with(['items.product.images', 'merchantProfile', 'address'])
+            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'address', 'rider.riderProfile'])
             ->where('user_id', $request->user()->id);
 
         if ($filter === 'active') {
@@ -30,6 +31,7 @@ class OrderController extends Controller
         }
 
         $orders = $query->latest()->paginate(10);
+        $orders->through(fn($order) => (new EcommerceOrderResource($order))->toArray($request));
 
         return $this->apiSuccess('Orders retrieved successfully', ['orders' => $orders]);
     }
@@ -37,7 +39,7 @@ class OrderController extends Controller
     public function show(Request $request, string $id): JsonResponse
     {
         $order = Order::ecommerce()
-            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'rider', 'address'])
+            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'rider.riderProfile', 'address'])
             ->where('user_id', $request->user()->id)
             ->find($id);
 
@@ -45,11 +47,11 @@ class OrderController extends Controller
             return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
-        $orderData = $order->toArray();
+        $orderData = (new EcommerceOrderResource($order))->toArray($request);
         $orderData['live_location'] = null;
 
         if (in_array($order->status, ['picked_up', 'on_the_way'])) {
-            $orderData['live_location'] = \Illuminate\Support\Facades\Cache::get('order_' . $order->id . '_location');
+            $orderData['live_location'] = Cache::get('order_' . $order->id . '_location');
         }
 
         return $this->apiSuccess('Order details retrieved', ['order' => $orderData]);
@@ -76,7 +78,11 @@ class OrderController extends Controller
             'cancellation_reason' => $validated['reason']
         ]);
 
-        return $this->apiSuccess('Order cancelled successfully', ['order' => $order]);
+        $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+
+        return $this->apiSuccess('Order cancelled successfully', [
+            'order' => new EcommerceOrderResource($order)
+        ]);
     }
 
     public function review(Request $request, string $id): JsonResponse
@@ -101,7 +107,11 @@ class OrderController extends Controller
             'review_comment' => $validated['review_comment'] ?? null
         ]);
 
-        return $this->apiSuccess('Review submitted successfully', ['order' => $order]);
+        $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+
+        return $this->apiSuccess('Review submitted successfully', [
+            'order' => new EcommerceOrderResource($order)
+        ]);
     }
 
     public function tracking(Request $request, string $id): JsonResponse
@@ -127,7 +137,12 @@ class OrderController extends Controller
             'status' => $order->status,
             'delivery_otp' => $order->delivery_otp,
             'timeline' => $timeline,
-            'rider' => $order->rider
+            'rider' => $order->rider ? [
+                'id'            => (int) $order->rider->id,
+                'name'          => (string) $order->rider->name,
+                'phone_number'  => (string) ($order->rider->phone ?? $order->rider->riderProfile?->phone_number ?? ''),
+                'profile_photo' => $order->rider->profile_photo_url,
+            ] : null,
         ]);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
+use App\Http\Resources\Customer\EcommerceOrderResource;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -133,8 +134,11 @@ class CheckoutController extends Controller
                 'mpesa_checkout_request_id' => $mpesaResponse['CheckoutRequestID']
             ]);
 
+            $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+
             return $this->apiSuccess('Order placed! Please enter your M-Pesa PIN on your phone to complete payment.', [
                 'order_id' => $order->id,
+                'order' => new EcommerceOrderResource($order),
                 'mpesa_response' => $mpesaResponse
             ]);
 

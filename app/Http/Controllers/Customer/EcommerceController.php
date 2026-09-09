@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Http\Resources\Customer\EcommerceProductResource;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -29,7 +30,7 @@ class EcommerceController extends Controller
             }])->get();
             
         // Fetch featured products from e-commerce merchants
-        $productsQuery = Product::with(['images', 'variants'])
+        $productsQuery = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
@@ -53,14 +54,14 @@ class EcommerceController extends Controller
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
 
-        $featuredProducts->transform(function ($product) use ($favoriteIds) {
+        $transformedProducts = $featuredProducts->map(function ($product) use ($favoriteIds, $request) {
             $product->is_favorite = in_array($product->id, $favoriteIds);
-            return $product;
+            return (new EcommerceProductResource($product))->toArray($request);
         });
 
         return $this->apiSuccess('Home data retrieved', [
             'categories' => $categories,
-            'featured_products' => $featuredProducts
+            'featured_products' => $transformedProducts
         ]);
     }
 
@@ -105,7 +106,7 @@ class EcommerceController extends Controller
     {
         $userCountry = $request->user()?->userProfile?->country ?? null;
 
-        $query = Product::with(['images', 'variants'])
+        $query = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
@@ -234,88 +235,63 @@ class EcommerceController extends Controller
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
 
-        $products->getCollection()->transform(function ($product) use ($favoriteIds) {
+        $products->through(function ($product) use ($favoriteIds, $request) {
             $product->is_favorite = in_array($product->id, $favoriteIds);
-            return $product;
+            return (new EcommerceProductResource($product))->toArray($request);
         });
 
         return $this->apiSuccess('Products retrieved', ['products' => $products]);
     }
 
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
         $product = Product::with([
                 'images', 
                 'variants', 
-                'category', 
+                'category.parent', 
                 'merchantProfile', 
-                'reviews.user.userProfile' // Load reviews and the reviewer's profile
+                'reviews.user'
             ])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
+            ->whereHas('merchantProfile.user.roles', function($r) {
+                $r->where('name', 'ECOMMERCE_MERCHANT');
+            })
             ->find($id);
 
         if (!$product) {
             return $this->apiError('Product not found or inactive', 404);
         }
 
-        // 1. Parse Variants into frontend-friendly lists
-        $availableColors = [];
-        $availableSizes = [];
-        
-        foreach ($product->variants as $variant) {
-            $attrs = $variant->attributes;
-            if (is_array($attrs)) {
-                if (isset($attrs['Color'])) $availableColors[] = $attrs['Color'];
-                if (isset($attrs['color'])) $availableColors[] = $attrs['color'];
-                
-                if (isset($attrs['Size'])) $availableSizes[] = $attrs['Size'];
-                if (isset($attrs['size'])) $availableSizes[] = $attrs['size'];
-            }
-        }
-
-        // Remove duplicates and re-index array
-        $product->available_colors = array_values(array_unique($availableColors));
-        $product->available_sizes = array_values(array_unique($availableSizes));
-
-        // 2. Fetch "You Might Like" related products
-        $relatedProducts = Product::with(['images', 'variants'])
+        // Fetch "You Might Like" related products from e-commerce merchants
+        $relatedProducts = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)
             ->where('category_id', $product->category_id)
             ->where('id', '!=', $product->id)
+            ->whereHas('merchantProfile.user.roles', function($r) {
+                $r->where('name', 'ECOMMERCE_MERCHANT');
+            })
             ->inRandomOrder()
             ->take(4)
             ->get();
 
         $user = Auth::guard('sanctum')->user();
-        if ($user) {
-            $product->is_favorite = \App\Models\Favorite::where('user_id', $user->id)
-                ->where('product_id', $product->id)
-                ->exists();
-                
-            $favIds = \App\Models\Favorite::where('user_id', $user->id)
-                ->whereIn('product_id', $relatedProducts->pluck('id'))
-                ->pluck('product_id')
-                ->toArray();
-                
-            $relatedProducts->transform(function($rp) use ($favIds) {
-                $rp->is_favorite = in_array($rp->id, $favIds);
-                return $rp;
-            });
-        } else {
-            $product->is_favorite = false;
-            $relatedProducts->transform(function($rp) {
-                $rp->is_favorite = false;
-                return $rp;
-            });
-        }
+        $favIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
+
+        $product->is_favorite = in_array($product->id, $favIds);
+        $productData = (new EcommerceProductResource($product))->toArray($request);
+
+        $transformedRelated = $relatedProducts->map(function($rp) use ($favIds, $request) {
+            $rp->is_favorite = in_array($rp->id, $favIds);
+            return (new EcommerceProductResource($rp))->toArray($request);
+        });
 
         return $this->apiSuccess('Product details retrieved', [
-            'product' => $product,
-            'related_products' => $relatedProducts
+            'product' => $productData,
+            'related_products' => $transformedRelated
         ]);
     }
 
@@ -391,7 +367,7 @@ class EcommerceController extends Controller
         }
 
         // Fetch highly recommended products for this specific store
-        $highlyRecommended = Product::with(['images', 'variants'])
+        $highlyRecommended = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->where('is_active', true)
             ->where('merchant_profile_id', $store->id)
@@ -402,7 +378,7 @@ class EcommerceController extends Controller
             
         // Fallback if they don't have rated products yet
         if ($highlyRecommended->isEmpty()) {
-            $highlyRecommended = Product::with(['images', 'variants'])
+            $highlyRecommended = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
                 ->withAvg('reviews', 'rating')
                 ->where('is_active', true)
                 ->where('merchant_profile_id', $store->id)
@@ -411,9 +387,17 @@ class EcommerceController extends Controller
                 ->get();
         }
 
+        $user = Auth::guard('sanctum')->user();
+        $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
+
+        $transformedRecommended = $highlyRecommended->map(function ($product) use ($favoriteIds, $request) {
+            $product->is_favorite = in_array($product->id, $favoriteIds);
+            return (new EcommerceProductResource($product))->toArray($request);
+        });
+
         return $this->apiSuccess('Store details retrieved', [
             'store' => $store,
-            'highly_recommended' => $highlyRecommended
+            'highly_recommended' => $transformedRecommended
         ]);
     }
 }

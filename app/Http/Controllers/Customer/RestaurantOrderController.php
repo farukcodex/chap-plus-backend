@@ -19,7 +19,7 @@ class RestaurantOrderController extends Controller
         $filter = $request->query('filter', 'active'); // active, completed, cancelled
 
         $query = Order::restaurant()
-            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'address', 'rider'])
+            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'address', 'rider.riderProfile'])
             ->where('user_id', $request->user()->id);
 
         if ($filter === 'active') {
@@ -39,7 +39,7 @@ class RestaurantOrderController extends Controller
     public function show(Request $request, string $id): JsonResponse
     {
         $order = Order::restaurant()
-            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'rider', 'address'])
+            ->with(['items.product.images', 'items.variant', 'merchantProfile', 'rider.riderProfile', 'address'])
             ->where('user_id', $request->user()->id)
             ->find($id);
 
@@ -137,7 +137,12 @@ class RestaurantOrderController extends Controller
             'status' => $order->status,
             'delivery_otp' => $order->delivery_otp,
             'timeline' => $timeline,
-            'rider' => $order->rider
+            'rider' => $order->rider ? [
+                'id'            => (int) $order->rider->id,
+                'name'          => (string) $order->rider->name,
+                'phone_number'  => (string) ($order->rider->phone ?? $order->rider->riderProfile?->phone_number ?? ''),
+                'profile_photo' => $order->rider->profile_photo_url,
+            ] : null,
         ]);
     }
 }
