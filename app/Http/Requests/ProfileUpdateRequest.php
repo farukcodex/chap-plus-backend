@@ -38,6 +38,8 @@ class ProfileUpdateRequest extends FormRequest
             'gender'        => ['sometimes', 'nullable', 'string', 'in:Male,Female,Other'],
             'date_of_birth' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'address'       => ['sometimes', 'nullable', 'string'],
+            'country'       => ['sometimes', 'nullable', 'string', 'size:2', 'alpha:ascii'],
+            'city'          => ['sometimes', 'nullable', 'string', 'max:255'],
             'lat'           => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'lon'           => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
             'latitude'      => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],

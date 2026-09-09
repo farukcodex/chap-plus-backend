@@ -25,14 +25,8 @@ class UserController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $role = $request->input('role', 'USER');
-        $query = User::query();
-
-        if ($role && strtolower($role) !== 'all') {
-            $query->role($role);
-        }
-
-        $query->with(['roles:id,name', 'userProfile']);
+        // Strictly query only regular users / customers
+        $query = User::role('USER')->with(['roles:id,name', 'userProfile']);
 
         // Search by name, email, or profile phone number
         if ($request->filled('search')) {
@@ -66,7 +60,7 @@ class UserController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $user = User::with(['roles:id,name', 'userProfile'])->find($id);
+        $user = User::role('USER')->with(['roles:id,name', 'userProfile'])->find($id);
 
         if (!$user) {
             return $this->apiError('User not found', 404);
@@ -83,12 +77,17 @@ class UserController extends Controller
     }
 
     /**
-     * Toggle or set the block status of a user (for Block/Slash icon action)
+     * Update user account status (active / blocked)
      * When blocking, all active Sanctum tokens are revoked.
      */
-    public function toggleBlock(Request $request, string $id): JsonResponse
+    public function updateStatus(Request $request, string $id): JsonResponse
     {
-        $user = User::find($id);
+        $request->validate([
+            'status'     => 'sometimes|string|in:active,blocked',
+            'is_blocked' => 'sometimes|boolean',
+        ]);
+
+        $user = User::role('USER')->find($id);
 
         if (!$user) {
             return $this->apiError('User not found', 404);
@@ -98,9 +97,13 @@ class UserController extends Controller
             return $this->apiError('Admin accounts cannot be blocked', 403);
         }
 
-        $newStatus = $request->has('is_blocked')
-            ? (bool) $request->input('is_blocked')
-            : !$user->is_blocked;
+        if ($request->has('status')) {
+            $newStatus = strtolower($request->input('status')) === 'blocked';
+        } elseif ($request->has('is_blocked')) {
+            $newStatus = (bool) $request->input('is_blocked');
+        } else {
+            $newStatus = !$user->is_blocked;
+        }
 
         $user->update(['is_blocked' => $newStatus]);
 
@@ -111,5 +114,13 @@ class UserController extends Controller
         $message = $newStatus ? 'User account has been blocked' : 'User account has been unblocked';
 
         return $this->apiSuccess($message, new AdminUserResource($user->fresh(['roles:id,name', 'userProfile'])));
+    }
+
+    /**
+     * Legacy alias for updateStatus.
+     */
+    public function toggleBlock(Request $request, string $id): JsonResponse
+    {
+        return $this->updateStatus($request, $id);
     }
 }

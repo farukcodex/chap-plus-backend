@@ -122,6 +122,39 @@ class ProfileController extends Controller
             $profileFields['longitude'] = $request->input('lon', $request->input('longitude'));
         }
 
+        // Handle city
+        if ($request->has('city')) {
+            $profileFields['city'] = $request->input('city');
+        }
+
+        // Handle country: can only be saved if not already saved in the database
+        if ($request->filled('country')) {
+            $newCountry = strtoupper($request->input('country'));
+            $existingCountry = $user->userProfile?->country;
+
+            if (!empty($existingCountry)) {
+                // Country is already saved - disallow changing to a different country
+                if (strtoupper($existingCountry) !== $newCountry) {
+                    return $this->apiError('Country cannot be changed once set.', 422, [
+                        'country' => ['Country has already been set and cannot be modified.']
+                    ]);
+                }
+            } else {
+                // First-time setting: validate ISO 3166-1 alpha-2 code and auto-detect currency
+                try {
+                    $isoData = (new \League\ISO3166\ISO3166)->alpha2($newCountry);
+                    $profileFields['country'] = $newCountry;
+                    if (isset($isoData['currency'][0])) {
+                        $profileFields['currency'] = $isoData['currency'][0];
+                    }
+                } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
+                    return $this->apiError('The provided country code is not a valid ISO 3166-1 alpha-2 code.', 422, [
+                        'country' => ['Invalid country code.']
+                    ]);
+                }
+            }
+        }
+
         if (!empty($userFields)) {
             $user->update($userFields);
         }
@@ -132,28 +165,50 @@ class ProfileController extends Controller
             $user->userProfile()->create($profileFields);
         }
 
-        // Keep merchantProfile coordinates in sync if merchant
-        if ($user->merchantProfile && ($request->has('lat') || $request->has('latitude') || $request->has('lon') || $request->has('longitude'))) {
-            $merchantCoords = [];
+        // Keep merchantProfile in sync if merchant
+        if ($user->merchantProfile) {
+            $merchantUpdates = [];
             if ($request->has('lat') || $request->has('latitude')) {
-                $merchantCoords['latitude'] = $request->input('lat', $request->input('latitude'));
+                $merchantUpdates['latitude'] = $request->input('lat', $request->input('latitude'));
             }
             if ($request->has('lon') || $request->has('longitude')) {
-                $merchantCoords['longitude'] = $request->input('lon', $request->input('longitude'));
+                $merchantUpdates['longitude'] = $request->input('lon', $request->input('longitude'));
             }
-            $user->merchantProfile->update($merchantCoords);
+            if ($request->has('city')) {
+                $merchantUpdates['city'] = $request->input('city');
+            }
+            if (isset($profileFields['country']) && empty($user->merchantProfile->country)) {
+                $merchantUpdates['country'] = $profileFields['country'];
+                if (isset($profileFields['currency']) && empty($user->merchantProfile->currency)) {
+                    $merchantUpdates['currency'] = $profileFields['currency'];
+                }
+            }
+            if (!empty($merchantUpdates)) {
+                $user->merchantProfile->update($merchantUpdates);
+            }
         }
 
-        // Keep riderProfile coordinates in sync if rider
-        if ($user->riderProfile && ($request->has('lat') || $request->has('latitude') || $request->has('lon') || $request->has('longitude'))) {
-            $riderCoords = [];
+        // Keep riderProfile in sync if rider
+        if ($user->riderProfile) {
+            $riderUpdates = [];
             if ($request->has('lat') || $request->has('latitude')) {
-                $riderCoords['latitude'] = $request->input('lat', $request->input('latitude'));
+                $riderUpdates['latitude'] = $request->input('lat', $request->input('latitude'));
             }
             if ($request->has('lon') || $request->has('longitude')) {
-                $riderCoords['longitude'] = $request->input('lon', $request->input('longitude'));
+                $riderUpdates['longitude'] = $request->input('lon', $request->input('longitude'));
             }
-            $user->riderProfile->update($riderCoords);
+            if ($request->has('city')) {
+                $riderUpdates['city'] = $request->input('city');
+            }
+            if (isset($profileFields['country']) && empty($user->riderProfile->country)) {
+                $riderUpdates['country'] = $profileFields['country'];
+                if (isset($profileFields['currency']) && empty($user->riderProfile->currency)) {
+                    $riderUpdates['currency'] = $profileFields['currency'];
+                }
+            }
+            if (!empty($riderUpdates)) {
+                $user->riderProfile->update($riderUpdates);
+            }
         }
 
         $user->refresh();

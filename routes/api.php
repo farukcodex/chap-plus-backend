@@ -340,7 +340,8 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
     Route::prefix('users')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\UserController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\UserController::class, 'show']);
-        Route::patch('/{id}/block', [\App\Http\Controllers\Admin\UserController::class, 'toggleBlock']);
+        Route::patch('/{id}/status', [\App\Http\Controllers\Admin\UserController::class, 'updateStatus']);
+        Route::patch('/{id}/block', [\App\Http\Controllers\Admin\UserController::class, 'updateStatus']);
     });
 
     // Refunds
