@@ -15,9 +15,17 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->decimal('amount', 10, 2);
-            $table->enum('status', ['pending', 'processing', 'completed', 'failed'])->default('pending');
+            $table->enum('status', ['pending', 'processing', 'completed', 'failed', 'rejected'])->default('pending');
             $table->string('payout_method')->default('mpesa');
             $table->string('mpesa_number');
+            $table->enum('payment_mode', ['automated', 'manual'])->nullable();
+            $table->string('transaction_reference')->nullable();
+            $table->string('mpesa_conversation_id')->nullable();
+            $table->string('mpesa_originator_conversation_id')->nullable();
+            $table->foreignId('processed_by_admin_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('admin_notes')->nullable();
+            $table->text('rejection_reason')->nullable();
+            $table->timestamp('processed_at')->nullable();
             $table->timestamps();
         });
     }

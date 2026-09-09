@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
@@ -58,6 +58,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/transactions', [\App\Http\Controllers\WalletController::class, 'transactions']);
         Route::post('/payout', [\App\Http\Controllers\WalletController::class, 'requestPayout']);
         Route::get('/payouts', [\App\Http\Controllers\WalletController::class, 'payouts']);
+        Route::post('/payouts/{id}/cancel', [\App\Http\Controllers\WalletController::class, 'cancelPayout']);
     });
 
     // Device Push Token (Expo) - Shared for Customer, Rider, Merchant, Admin
@@ -344,6 +345,15 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::get('/', [\App\Http\Controllers\Admin\RefundController::class, 'index']);
         Route::post('/{id}/auto', [\App\Http\Controllers\Admin\RefundController::class, 'processAutomatic']);
         Route::post('/{id}/manual', [\App\Http\Controllers\Admin\RefundController::class, 'processManual']);
+    });
+
+    // Payouts
+    Route::prefix('payouts')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\PayoutController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Admin\PayoutController::class, 'show']);
+        Route::post('/{id}/approve-manual', [\App\Http\Controllers\Admin\PayoutController::class, 'approveManual']);
+        Route::post('/{id}/approve-auto', [\App\Http\Controllers\Admin\PayoutController::class, 'approveAutomatic']);
+        Route::post('/{id}/reject', [\App\Http\Controllers\Admin\PayoutController::class, 'reject']);
     });
 
     Route::prefix('riders')->group(function () {

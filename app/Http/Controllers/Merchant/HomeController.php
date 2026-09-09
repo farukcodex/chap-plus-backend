@@ -153,7 +153,8 @@ class HomeController extends Controller
             ->take(5)
             ->get()
             ->map(function ($booking) {
-                $primaryImage = $booking->hotel->images->where('is_primary', true)->first();
+                $primaryImage = $booking->hotel?->images?->where('is_primary', true)->first()
+                    ?? $booking->hotel?->images?->first();
                 return [
                     'id' => $booking->id,
                     'order_number' => '#BKG-' . str_pad($booking->id, 5, '0', STR_PAD_LEFT),
@@ -161,8 +162,8 @@ class HomeController extends Controller
                     'items_count' => $booking->rooms_booked,
                     'status' => $booking->status,
                     'created_at' => $booking->created_at,
-                    'product_name' => $booking->hotel->name,
-                    'product_image' => $primaryImage ? $primaryImage->image_path : null,
+                    'product_name' => $booking->hotel?->name,
+                    'product_image' => $primaryImage ? $primaryImage->image_url : null,
                 ];
             });
 
@@ -219,7 +220,8 @@ class HomeController extends Controller
             ->take(5)
             ->get()
             ->map(function ($booking) {
-                $primaryImage = $booking->bus->images->where('is_primary', true)->first();
+                $primaryImage = $booking->bus?->images?->where('is_primary', true)->first()
+                    ?? $booking->bus?->images?->first();
                 return [
                     'id' => $booking->id,
                     'order_number' => '#BKG-' . str_pad($booking->id, 5, '0', STR_PAD_LEFT),
@@ -227,8 +229,8 @@ class HomeController extends Controller
                     'items_count' => count($booking->seat_numbers),
                     'status' => $booking->status,
                     'created_at' => $booking->created_at,
-                    'product_name' => $booking->bus->name,
-                    'product_image' => $primaryImage ? $primaryImage->image_path : null,
+                    'product_name' => $booking->bus?->name,
+                    'product_image' => $primaryImage ? $primaryImage->image_url : null,
                 ];
             });
 

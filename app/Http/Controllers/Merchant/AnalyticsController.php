@@ -82,8 +82,10 @@ class AnalyticsController extends Controller
             ->get();
 
         foreach ($topProducts as $product) {
-            $primaryImage = \App\Models\ProductImage::where('product_id', $product->id)->where('is_primary', true)->first();
-            $product->image = $primaryImage ? $primaryImage->image_path : null;
+            $primaryImage = \App\Models\ProductImage::where('product_id', $product->id)->orderByDesc('is_primary')->first();
+            $imageUrl = $primaryImage ? $primaryImage->image_url : null;
+            $product->image = $imageUrl;
+            $product->image_url = $imageUrl;
             $product->total_sold = (int) $product->total_sold;
         }
 
@@ -128,8 +130,10 @@ class AnalyticsController extends Controller
             ->get();
 
         foreach ($topHotels as $hotel) {
-            $primaryImage = \App\Models\HotelImage::where('hotel_id', $hotel->id)->where('is_primary', true)->first();
-            $hotel->image = $primaryImage ? $primaryImage->image_path : null;
+            $primaryImage = \App\Models\HotelImage::where('hotel_id', $hotel->id)->orderByDesc('is_primary')->first();
+            $imageUrl = $primaryImage ? $primaryImage->image_url : null;
+            $hotel->image = $imageUrl;
+            $hotel->image_url = $imageUrl;
             $hotel->total_sold = (int) $hotel->total_sold;
         }
 
@@ -169,8 +173,8 @@ class AnalyticsController extends Controller
             ->get();
 
         foreach ($topBuses as $bus) {
-            $primaryImage = \App\Models\BusImage::where('bus_id', $bus->id)->where('is_primary', true)->first();
-            $bus->image = $primaryImage ? $primaryImage->image_path : null;
+            $primaryImage = \App\Models\BusImage::where('bus_id', $bus->id)->orderByDesc('is_primary')->first();
+            $bus->image_url = $primaryImage ? $primaryImage->image_url : null;
             $bus->total_sold = (int) $bus->total_sold;
         }
 
@@ -219,8 +223,10 @@ class AnalyticsController extends Controller
 
         // Load primary image for each product manually
         $topProducts->getCollection()->transform(function ($product) {
-            $primaryImage = \App\Models\ProductImage::where('product_id', $product->id)->where('is_primary', true)->first();
-            $product->image = $primaryImage ? $primaryImage->image_path : null;
+            $primaryImage = \App\Models\ProductImage::where('product_id', $product->id)->orderByDesc('is_primary')->first();
+            $imageUrl = $primaryImage ? $primaryImage->image_url : null;
+            $product->image = $imageUrl;
+            $product->image_url = $imageUrl;
             $product->total_sold = (int) $product->total_sold;
             return $product;
         });
@@ -243,8 +249,10 @@ class AnalyticsController extends Controller
             ->paginate(15);
 
         $topHotels->getCollection()->transform(function ($hotel) {
-            $primaryImage = \App\Models\HotelImage::where('hotel_id', $hotel->id)->where('is_primary', true)->first();
-            $hotel->image = $primaryImage ? $primaryImage->image_path : null;
+            $primaryImage = \App\Models\HotelImage::where('hotel_id', $hotel->id)->orderByDesc('is_primary')->first();
+            $imageUrl = $primaryImage ? $primaryImage->image_url : null;
+            $hotel->image = $imageUrl;
+            $hotel->image_url = $imageUrl;
             $hotel->total_sold = (int) $hotel->total_sold;
             return $hotel;
         });
@@ -266,8 +274,8 @@ class AnalyticsController extends Controller
             ->paginate(15);
 
         $topBuses->getCollection()->transform(function ($bus) {
-            $primaryImage = \App\Models\BusImage::where('bus_id', $bus->id)->where('is_primary', true)->first();
-            $bus->image = $primaryImage ? $primaryImage->image_path : null;
+            $primaryImage = \App\Models\BusImage::where('bus_id', $bus->id)->orderByDesc('is_primary')->first();
+            $bus->image_url = $primaryImage ? $primaryImage->image_url : null;
             $bus->total_sold = (int) $bus->total_sold;
             return $bus;
         });

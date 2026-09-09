@@ -76,4 +76,20 @@ class User extends Authenticatable
     {
         return $this->hasMany(DeviceToken::class);
     }
+
+    /**
+     * Get the user's wallet.
+     */
+    public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
+    /**
+     * Get the user's payout requests.
+     */
+    public function payoutRequests()
+    {
+        return $this->hasMany(PayoutRequest::class);
+    }
 }

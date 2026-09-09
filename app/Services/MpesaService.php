@@ -92,4 +92,64 @@ class MpesaService
         Log::error('M-Pesa STK Push Error: ' . $response->body());
         throw new \Exception('Failed to initiate STK push: ' . $response->body());
     }
+
+    public function initiateB2cPayment($phoneNumber, $amount, $remarks = 'Payout', $occasion = '')
+    {
+        // Format phone number to 254XXXXXXXXX
+        if (str_starts_with($phoneNumber, '0')) {
+            $phoneNumber = '254' . substr($phoneNumber, 1);
+        } elseif (str_starts_with($phoneNumber, '+')) {
+            $phoneNumber = substr($phoneNumber, 1);
+        }
+
+        $b2cShortcode = env('MPESA_B2C_SHORTCODE', $this->shortcode);
+        $initiatorName = env('MPESA_B2C_INITIATOR_NAME');
+        $securityCredential = env('MPESA_B2C_SECURITY_CREDENTIAL');
+
+        // If B2C credentials are not configured, simulate success for test/sandbox
+        if (empty($initiatorName) || empty($securityCredential)) {
+            Log::info("M-Pesa B2C simulated for {$phoneNumber} of {$amount} KES (B2C credentials not configured).");
+            return [
+                'ConversationID' => 'B2C_' . strtoupper(uniqid()),
+                'OriginatorConversationID' => 'ORIG_' . strtoupper(uniqid()),
+                'ResponseCode' => '0',
+                'ResponseDescription' => 'Accept the service request successfully (Simulated)',
+                'TransactionID' => 'MPESA' . strtoupper(substr(md5(uniqid()), 0, 10)),
+            ];
+        }
+
+        $accessToken = $this->generateAccessToken();
+        $resultUrl = env('APP_URL') . '/api/webhooks/mpesa/b2c-result';
+        $queueTimeoutUrl = env('APP_URL') . '/api/webhooks/mpesa/b2c-timeout';
+
+        if (str_contains($resultUrl, 'localhost') || str_contains($resultUrl, '127.0.0.1')) {
+            $resultUrl = 'https://mydummy-api-chapplus.com/api/webhooks/mpesa/b2c-result';
+            $queueTimeoutUrl = 'https://mydummy-api-chapplus.com/api/webhooks/mpesa/b2c-timeout';
+        }
+
+        $payload = [
+            'InitiatorName' => $initiatorName,
+            'SecurityCredential' => $securityCredential,
+            'CommandID' => 'BusinessPayment',
+            'Amount' => round($amount),
+            'PartyA' => $b2cShortcode,
+            'PartyB' => $phoneNumber,
+            'Remarks' => substr($remarks, 0, 100),
+            'QueueTimeOutURL' => $queueTimeoutUrl,
+            'ResultURL' => $resultUrl,
+            'Occasion' => substr($occasion, 0, 100),
+        ];
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Content-Type' => 'application/json'
+        ])->post($this->baseUrl . '/mpesa/b2c/v1/paymentrequest', $payload);
+
+        if ($response->successful()) {
+            return $response->json();
+        }
+
+        Log::error('M-Pesa B2C Payment Error: ' . $response->body());
+        throw new \Exception('Failed to initiate M-Pesa B2C payout: ' . $response->body());
+    }
 }
