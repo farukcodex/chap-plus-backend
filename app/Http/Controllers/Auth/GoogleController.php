@@ -177,7 +177,21 @@ class GoogleController extends Controller
             }
 
             // Create Sanctum Token
-            $token = $user->createToken('auth_token')->plainTextToken;
+            $token = $user->createToken($request->device_name ?? 'google_auth')->plainTextToken;
+
+            // If expo_push_token is provided during Google login, register or update device token
+            if ($request->filled('expo_push_token')) {
+                \App\Models\DeviceToken::updateOrCreate(
+                    ['token' => trim($request->expo_push_token)],
+                    [
+                        'user_id'      => $user->id,
+                        'platform'     => $request->platform,
+                        'device_name'  => $request->device_name,
+                        'device_id'    => $request->device_id,
+                        'last_used_at' => now(),
+                    ]
+                );
+            }
 
             if ($wantsJson) {
                 return $this->apiSuccess('Login successful.', [
