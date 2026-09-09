@@ -53,6 +53,10 @@ class ProfileController extends Controller
             ->select('id', 'title', 'address_text', 'latitude', 'longitude')
             ->get();
 
+        if ($user->userProfile) {
+            $userData['user_profile'] = $user->userProfile;
+        }
+
         if ($user->merchantProfile) {
             $userData['merchant_profile'] = $user->merchantProfile;
         }

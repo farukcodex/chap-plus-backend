@@ -22,11 +22,14 @@ class UserRegisterController extends Controller
     public function store(UserRegisterRequest $request, OtpService $otpService): JsonResponse
     {
         $validated = $request->validated();
+        $countryCode = strtoupper($validated['country']);
 
         try {
-            $user = DB::transaction(function () use ($validated, $otpService): User {
+            $user = DB::transaction(function () use ($validated, $countryCode, $otpService): User {
+                $name = !empty($validated['name']) ? trim($validated['name']) : explode('@', $validated['email'])[0];
+
                 $user = User::create([
-                    'name'       => explode('@', $validated['email'])[0], // Default name
+                    'name'       => $name,
                     'email'      => $validated['email'],
                     'password'   => $validated['password'],
                 ]);
@@ -35,16 +38,16 @@ class UserRegisterController extends Controller
 
                 // Auto-detect Currency from Country code
                 try {
-                    $isoData = (new \League\ISO3166\ISO3166)->alpha2($validated['country']);
+                    $isoData = (new \League\ISO3166\ISO3166)->alpha2($countryCode);
                     $currency = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
                 } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
                     throw new \InvalidArgumentException('INVALID_COUNTRY_CODE');
                 }
 
                 \App\Models\UserProfile::create([
-                    'user_id' => $user->id,
-                    'country' => $validated['country'],
-                    'city' => $validated['city'],
+                    'user_id'  => $user->id,
+                    'country'  => $countryCode,
+                    'city'     => $validated['city'],
                     'currency' => $currency,
                 ]);
 

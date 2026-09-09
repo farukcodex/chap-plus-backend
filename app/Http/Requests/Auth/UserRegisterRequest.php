@@ -23,7 +23,8 @@ class UserRegisterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => 'required|email:rfc,dns|unique:users,email',
+            'name' => 'nullable|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email',
             'password' => ['required', 'confirmed', Password::defaults()],
             'country' => 'required|string|size:2|alpha:ascii', 
             'city' => 'required|string|max:255',

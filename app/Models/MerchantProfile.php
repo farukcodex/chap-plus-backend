@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'country', 
     'city', 
     'currency',
+    'status',
     'business_name', 
     'address',
     'phone_number',
@@ -28,6 +29,14 @@ class MerchantProfile extends Model
 
     protected $appends = ['profile_image_url', 'cover_image_url'];
     protected $hidden = ['profile_image_path', 'cover_image_path'];
+
+    /**
+     * Check if the merchant is approved.
+     */
+    public function isApproved(): bool
+    {
+        return $this->status === 'approved';
+    }
 
     /**
      * Get the user that owns the merchant profile.

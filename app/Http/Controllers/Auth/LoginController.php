@@ -35,7 +35,7 @@ class LoginController extends Controller
         $user = User::where('email', $request->email)->first();
 
         // Generic error (prevents enumeration if user not found, and blocks admins from using this route)
-        if (! $user || $user->hasRole('admin')) {
+        if (! $user || $user->hasRole('ADMIN')) {
             return $this->apiError('Invalid login credentials.', 401, ['code' => 'INVALID_CREDENTIALS']);
         }
 
@@ -59,12 +59,10 @@ class LoginController extends Controller
             return $this->apiError('Your email address is not verified. Please verify your email.', 403, ['code' => 'EMAIL_NOT_VERIFIED']);
         }
 
-        // if($user->status)
-
-        // Account status check
-        // if ($user->status !== 'active') {
-        //     return $this->apiError('Your account is '. $user->status, 403, ['code' => 'ACCOUNT_NOT_ACTIVE']);
-        // }
+        // Check if user is blocked by administrator
+        if ($user->is_blocked) {
+            return $this->apiError('Your account has been blocked by an administrator.', 403, ['code' => 'ACCOUNT_BLOCKED']);
+        }
 
         // Prevent too much login sessions.
         $activeSessions = $user->tokens()->count();
@@ -89,15 +87,21 @@ class LoginController extends Controller
             );
         }
 
-        $userData = $user->only(['id', 'name', 'email', 'email_verified_at', 'google_id', 'profile_photo_url']);
+        $userData = $user->only([
+            'id', 'name', 'email', 'email_verified_at', 'google_id', 'profile_photo_url', 'is_blocked', 'created_at', 'updated_at'
+        ]);
         $userData['role'] = $user->getRoleNames()->first();
 
-        // Attach specific profiles for onboarding checks
+        // Attach specific profiles for onboarding and profile data checks
+        if ($userData['role'] === 'USER' || $user->hasRole('USER')) {
+            $userData['user_profile'] = $user->userProfile;
+        }
+
         if ($userData['role'] === 'RIDER' && $user->riderProfile) {
             $userData['rider_profile'] = $user->riderProfile;
         }
 
-        if (in_array($userData['role'], ['ECOMMERCE_MERCHANT', 'RESTAURANT_MERCHANT', 'HOTEL_MERCHANT']) && $user->merchantProfile) {
+        if (in_array($userData['role'], ['ECOMMERCE_MERCHANT', 'RESTAURANT_MERCHANT', 'HOTEL_MERCHANT', 'BUS_MERCHANT']) && $user->merchantProfile) {
             $userData['merchant_profile'] = $user->merchantProfile;
         }
 

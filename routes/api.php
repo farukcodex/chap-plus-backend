@@ -25,7 +25,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [LoginController::class, 'store']);
 
     Route::get('/google/redirect', [GoogleController::class, 'redirect']);
-    Route::get('/google/callback', [GoogleController::class, 'callback']);
+    Route::match(['get', 'post'], '/google/callback', [GoogleController::class, 'callback']);
+    Route::post('/google', [GoogleController::class, 'callback']);
 
     Route::post('/logout', [LogoutController::class, 'destroy'])->middleware(['auth:sanctum']);
 
@@ -283,6 +284,13 @@ Route::prefix('merchant')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
+    // Dashboard
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\DashboardController::class, 'index']);
+        Route::get('/chart', [\App\Http\Controllers\Admin\DashboardController::class, 'chart']);
+        Route::get('/recent-users', [\App\Http\Controllers\Admin\DashboardController::class, 'recentUsers']);
+    });
+
     Route::get('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'index']);
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'store']);
 
@@ -292,6 +300,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
     Route::prefix('users')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\UserController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\UserController::class, 'show']);
+        Route::patch('/{id}/block', [\App\Http\Controllers\Admin\UserController::class, 'toggleBlock']);
     });
 
     // Refunds
@@ -305,6 +314,12 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::get('/', [\App\Http\Controllers\Admin\RiderController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\RiderController::class, 'show']);
         Route::patch('/{id}/status', [\App\Http\Controllers\Admin\RiderController::class, 'updateStatus']);
+    });
+
+    Route::prefix('merchants')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\MerchantController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Admin\MerchantController::class, 'show']);
+        Route::patch('/{id}/status', [\App\Http\Controllers\Admin\MerchantController::class, 'updateStatus']);
     });
 });
 
