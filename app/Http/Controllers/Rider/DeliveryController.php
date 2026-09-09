@@ -271,8 +271,9 @@ class DeliveryController extends Controller
     public function updateLocation(string $id, Request $request): JsonResponse
     {
         $request->validate([
-            'latitude' => 'required|numeric',
+            'latitude'  => 'required|numeric',
             'longitude' => 'required|numeric',
+            'heading'   => 'sometimes|nullable|numeric',
         ]);
 
         $order = Order::where('rider_id', $request->user()->id)->whereIn('status', ['picked_up', 'on_the_way'])->find($id);
@@ -281,13 +282,20 @@ class DeliveryController extends Controller
             return $this->apiError('Order is not currently active for tracking', 400, ['code' => 'INVALID_ORDER_STATUS']);
         }
 
+        $heading = $request->filled('heading') ? (float) $request->heading : null;
+
         // Broadcast the location immediately via WebSockets
-        event(new \App\Events\RiderLocationUpdated($order->id, $request->latitude, $request->longitude));
+        event(new \App\Events\RiderLocationUpdated($order->id, (float) $request->latitude, (float) $request->longitude, $heading));
 
         // Save only the latest location to cache so the customer can fetch it on load without waiting for the next ping
         \Illuminate\Support\Facades\Cache::put(
             'order_' . $order->id . '_location',
-            ['latitude' => $request->latitude, 'longitude' => $request->longitude],
+            [
+                'latitude'   => (float) $request->latitude,
+                'longitude'  => (float) $request->longitude,
+                'heading'    => $heading,
+                'updated_at' => now()->toIso8601String(),
+            ],
             3600 // Cache for 1 hour
         );
 

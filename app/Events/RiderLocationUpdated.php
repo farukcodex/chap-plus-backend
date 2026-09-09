@@ -17,15 +17,17 @@ class RiderLocationUpdated implements ShouldBroadcastNow
     public $orderId;
     public $latitude;
     public $longitude;
+    public $heading;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($orderId, $latitude, $longitude)
+    public function __construct($orderId, $latitude, $longitude, $heading = null)
     {
         $this->orderId = $orderId;
         $this->latitude = $latitude;
         $this->longitude = $longitude;
+        $this->heading = $heading;
     }
 
     /**

@@ -10,7 +10,7 @@ use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
-class OrderController extends Controller
+class EcommerceOrderController extends Controller
 {
     use ApiResponseTrait;
 
@@ -116,33 +116,145 @@ class OrderController extends Controller
 
     public function tracking(Request $request, string $id): JsonResponse
     {
-        $order = Order::ecommerce()->with(['rider.riderProfile'])->where('user_id', $request->user()->id)->find($id);
+        $order = Order::ecommerce()
+            ->with(['rider.riderProfile', 'address', 'merchantProfile', 'items', 'user.userProfile'])
+            ->where('user_id', $request->user()->id)
+            ->find($id);
 
         if (!$order) {
             return $this->apiError('Order not found', 404, ['code' => 'ORDER_NOT_FOUND']);
         }
 
-        // Timeline data for the UI
-        $timeline = [
-            'order_confirmed' => in_array($order->status, ['paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
-            'preparing' => in_array($order->status, ['processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
-            'ready_for_pickup' => in_array($order->status, ['ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
-            'accepted' => in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered']),
-            'picked_up' => in_array($order->status, ['picked_up', 'on_the_way', 'delivered']),
-            'on_the_way' => in_array($order->status, ['on_the_way', 'delivered']),
-            'delivered' => $order->status === 'delivered',
+        // 1. Fetch cached live location if active
+        $cachedLocation = Cache::get('order_' . $order->id . '_location');
+
+        // Rider location coordinates
+        $riderCoordinates = null;
+        if ($cachedLocation && is_array($cachedLocation)) {
+            $riderCoordinates = [
+                'latitude'     => isset($cachedLocation['latitude']) ? (float) $cachedLocation['latitude'] : null,
+                'longitude'    => isset($cachedLocation['longitude']) ? (float) $cachedLocation['longitude'] : null,
+                'heading'      => isset($cachedLocation['heading']) ? (float) $cachedLocation['heading'] : null,
+                'last_updated' => $cachedLocation['updated_at'] ?? null,
+            ];
+        } elseif ($order->rider?->riderProfile?->latitude && $order->rider?->riderProfile?->longitude) {
+            $riderCoordinates = [
+                'latitude'     => (float) $order->rider->riderProfile->latitude,
+                'longitude'    => (float) $order->rider->riderProfile->longitude,
+                'heading'      => null,
+                'last_updated' => null,
+            ];
+        }
+
+        // Customer coordinates
+        $customerCoordinates = [
+            'title'     => $order->address?->title ?? 'Your location',
+            'address'   => $order->address?->address_text ?? $order->user?->userProfile?->address ?? '',
+            'latitude'  => $order->address?->latitude !== null ? (float) $order->address->latitude : ($order->user?->userProfile?->latitude !== null ? (float) $order->user->userProfile->latitude : null),
+            'longitude' => $order->address?->longitude !== null ? (float) $order->address->longitude : ($order->user?->userProfile?->longitude !== null ? (float) $order->user->userProfile->longitude : null),
         ];
 
+        // Store coordinates
+        $storeCoordinates = [
+            'name'      => $order->merchantProfile?->business_name ?? 'Store',
+            'address'   => $order->merchantProfile?->address ?? '',
+            'latitude'  => $order->merchantProfile?->latitude !== null ? (float) $order->merchantProfile->latitude : null,
+            'longitude' => $order->merchantProfile?->longitude !== null ? (float) $order->merchantProfile->longitude : null,
+        ];
+
+        // 2. Timeline steps matching mobile UI
+        $isConfirmed = in_array($order->status, ['paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']);
+        $isPickedUp = in_array($order->status, ['picked_up', 'on_the_way', 'delivered']);
+        $isOnTheWay = in_array($order->status, ['on_the_way', 'delivered']);
+        $isDelivered = $order->status === 'delivered';
+
+        $deliveryTimeline = [
+            [
+                'key'    => 'order_confirmed',
+                'title'  => 'Order Confirmed',
+                'time'   => $order->created_at ? $order->created_at->format('g:i A') : 'Pending',
+                'status' => $isConfirmed ? 'completed' : ($order->status === 'pending_payment' ? 'in_progress' : 'pending'),
+            ],
+            [
+                'key'    => 'rider_picked',
+                'title'  => 'Rider Picked',
+                'time'   => $isPickedUp ? ($order->updated_at ? $order->updated_at->format('g:i A') : 'Completed') : ($isConfirmed && !$isPickedUp ? 'In progress' : 'Pending'),
+                'status' => $isPickedUp ? 'completed' : ($isConfirmed ? 'in_progress' : 'pending'),
+            ],
+            [
+                'key'    => 'on_the_way',
+                'title'  => 'On the Way',
+                'time'   => $isOnTheWay ? ($order->updated_at ? $order->updated_at->format('g:i A') : 'Completed') : ($isPickedUp ? 'In progress' : 'Pending'),
+                'status' => $isOnTheWay ? 'completed' : ($isPickedUp ? 'in_progress' : 'pending'),
+            ],
+            [
+                'key'    => 'nearby',
+                'title'  => 'Nearby',
+                'time'   => $isDelivered ? ($order->updated_at ? $order->updated_at->format('g:i A') : 'Completed') : ($order->status === 'on_the_way' ? 'In 15 min' : 'Pending'),
+                'status' => $isDelivered ? 'completed' : ($order->status === 'on_the_way' ? 'in_progress' : 'pending'),
+            ],
+            [
+                'key'    => 'delivered',
+                'title'  => 'Delivered',
+                'time'   => $isDelivered ? ($order->updated_at ? $order->updated_at->format('g:i A') : 'Completed') : 'Pending',
+                'status' => $isDelivered ? 'completed' : 'pending',
+            ],
+        ];
+
+        // Legacy boolean map for backward compatibility
+        $legacyTimeline = [
+            'order_confirmed'  => $isConfirmed,
+            'preparing'        => in_array($order->status, ['processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'ready_for_pickup' => in_array($order->status, ['ready_for_pickup', 'accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'accepted'         => in_array($order->status, ['accepted', 'picked_up', 'on_the_way', 'delivered']),
+            'picked_up'        => $isPickedUp,
+            'on_the_way'       => $isOnTheWay,
+            'delivered'        => $isDelivered,
+        ];
+
+        // 3. Order details summary
+        $itemsCount = $order->items->sum('quantity') ?: $order->items->count();
+        $productPrice = (float) $order->total_amount;
+        $deliveryCharge = (float) ($order->delivery_fee ?? 0);
+        $totalAmount = round($productPrice + $deliveryCharge, 2);
+        $currency = $order->currency ?? $order->merchantProfile?->currency ?? 'USD';
+
+        $orderDetails = [
+            'id'              => $order->id,
+            'order_number'    => $order->order_number,
+            'status'          => $order->status,
+            'delivery_otp'    => $order->delivery_otp,
+            'items_count'     => (int) $itemsCount,
+            'product_price'   => $productPrice,
+            'delivery_charge' => $deliveryCharge,
+            'total_amount'    => $totalAmount,
+            'currency'        => $currency,
+        ];
+
+        // 4. Rider info
+        $rider = $order->rider ? [
+            'id'            => (int) $order->rider->id,
+            'name'          => (string) $order->rider->name,
+            'phone_number'  => (string) ($order->rider->phone ?? $order->rider->riderProfile?->phone_number ?? ''),
+            'profile_photo' => $order->rider->profile_photo_url,
+        ] : null;
+
         return $this->apiSuccess('Order tracking info retrieved', [
-            'status' => $order->status,
-            'delivery_otp' => $order->delivery_otp,
-            'timeline' => $timeline,
-            'rider' => $order->rider ? [
-                'id'            => (int) $order->rider->id,
-                'name'          => (string) $order->rider->name,
-                'phone_number'  => (string) ($order->rider->phone ?? $order->rider->riderProfile?->phone_number ?? ''),
-                'profile_photo' => $order->rider->profile_photo_url,
-            ] : null,
+            'order_details'     => $orderDetails,
+            'coordinates'       => [
+                'customer' => $customerCoordinates,
+                'store'    => $storeCoordinates,
+                'rider'    => $riderCoordinates,
+            ],
+            'rider'             => $rider,
+            'delivery_timeline' => $deliveryTimeline,
+            'timeline'          => $legacyTimeline,
+            'realtime'          => [
+                'channel' => 'private-order.' . $order->id,
+                'event'   => 'RiderLocationUpdated',
+            ],
+            'status'            => $order->status,
+            'delivery_otp'      => $order->delivery_otp,
         ]);
     }
 }

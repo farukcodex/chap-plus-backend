@@ -12,6 +12,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Merchant\OnboardingController;
+use Illuminate\Support\Facades\Broadcast;
+
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 /*
 |--------------------------------------------------------------------------
 | Auth routes
@@ -136,11 +139,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/orders/{id}/retry-payment', [\App\Http\Controllers\Customer\CheckoutController::class, 'retryPayment']);
 
         Route::prefix('orders')->group(function () {
-            Route::get('/', [\App\Http\Controllers\Customer\OrderController::class, 'index']);
-            Route::get('/{id}', [\App\Http\Controllers\Customer\OrderController::class, 'show']);
-            Route::post('/{id}/cancel', [\App\Http\Controllers\Customer\OrderController::class, 'cancel']);
-            Route::post('/{id}/review', [\App\Http\Controllers\Customer\OrderController::class, 'review']);
-            Route::get('/{id}/tracking', [\App\Http\Controllers\Customer\OrderController::class, 'tracking']);
+            Route::get('/', [\App\Http\Controllers\Customer\EcommerceOrderController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Customer\EcommerceOrderController::class, 'show']);
+            Route::post('/{id}/cancel', [\App\Http\Controllers\Customer\EcommerceOrderController::class, 'cancel']);
+            Route::post('/{id}/review', [\App\Http\Controllers\Customer\EcommerceOrderController::class, 'review']);
+            Route::get('/{id}/tracking', [\App\Http\Controllers\Customer\EcommerceOrderController::class, 'tracking']);
         });
     });
 
