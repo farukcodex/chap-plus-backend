@@ -385,13 +385,19 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::post('/{id}/manual', [\App\Http\Controllers\Admin\RefundController::class, 'processManual']);
     });
 
-    // Payouts
+    // Payouts & Withdrawals
     Route::prefix('payouts')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\PayoutController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\PayoutController::class, 'show']);
         Route::post('/{id}/approve-manual', [\App\Http\Controllers\Admin\PayoutController::class, 'approveManual']);
         Route::post('/{id}/approve-auto', [\App\Http\Controllers\Admin\PayoutController::class, 'approveAutomatic']);
         Route::post('/{id}/reject', [\App\Http\Controllers\Admin\PayoutController::class, 'reject']);
+    });
+
+    // Transactions (powers the Admin Transactions History screen)
+    Route::prefix('transactions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\TransactionController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Admin\TransactionController::class, 'show']);
     });
 
     Route::prefix('riders')->group(function () {
@@ -418,6 +424,18 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::get('/revenue', [\App\Http\Controllers\Admin\AnalyticsController::class, 'revenue']);
         Route::get('/categories', [\App\Http\Controllers\Admin\AnalyticsController::class, 'categories']);
         Route::get('/orders-performance', [\App\Http\Controllers\Admin\AnalyticsController::class, 'ordersPerformance']);
+    });
+
+    // Admin Notifications System
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'index']);
+        Route::get('/unread-count', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'unreadCount']);
+        Route::get('/{id}', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'show']);
+        Route::patch('/{id}/read', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'markAsRead']);
+        Route::post('/{id}/read', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'markAsRead']);
+        Route::post('/read-all', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'markAllAsRead']);
+        Route::delete('/clear-all', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'clearAll']);
+        Route::delete('/{id}', [\App\Http\Controllers\Admin\AdminNotificationController::class, 'destroy']);
     });
 });
 

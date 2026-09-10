@@ -174,6 +174,11 @@ class ProfileController extends Controller
             $request->user()->update(['profile_photo_path' => $path]);
         }
 
+        // Notify admins of new rider application awaiting verification
+        \App\Services\AdminNotificationService::notifyAdmins(
+            new \App\Notifications\Admin\NewRiderRegistrationNotification($request->user())
+        );
+
         return $this->apiSuccess('Rider registration finalized!', ['profile' => $profile]);
     }
 }

@@ -27,10 +27,29 @@ class AdminPayoutResource extends JsonResource
             $roleName = $roleNames->first() ?? 'USER';
         }
 
+        // Determine human-readable account type
+        $isMerchant = in_array($roleName, ['ECOMMERCE_MERCHANT', 'RESTAURANT_MERCHANT', 'HOTEL_MERCHANT', 'BUS_MERCHANT']);
+        $accountType = $isMerchant ? 'Merchant' : ($roleName === 'RIDER' ? 'Rider' : 'User');
+
+        $statusLabel = match ($this->status) {
+            'completed' => 'Completed',
+            'rejected', 'cancelled', 'failed' => 'Canceled',
+            default     => ucfirst($this->status),
+        };
+
+        $currency = $user?->wallet?->currency ?? (\App\Models\PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
+
         return [
             'id'                               => (int) $this->id,
+            'name'                             => (string) ($user?->name ?? 'N/A'),
+            'email'                            => (string) ($user?->email ?? ''),
+            'account_type'                     => $accountType,
             'amount'                           => (float) $this->amount,
+            'currency'                         => $currency,
+            'transaction_id'                   => $this->transaction_reference ?? ('#TXN-' . str_pad($this->id, 5, '0', STR_PAD_LEFT)),
+            'date'                             => $this->created_at ? Carbon::parse($this->created_at)->format('d-m-Y') : null,
             'status'                           => (string) $this->status,
+            'status_label'                     => $statusLabel,
             'payout_method'                    => (string) $this->payout_method,
             'mpesa_number'                     => (string) $this->mpesa_number,
             'payment_mode'                     => $this->payment_mode,

@@ -39,25 +39,33 @@ class PayoutController extends Controller
             'processedByAdmin'
         ]);
 
-        // Filter by Status
+        // Filter by Status (supports 'history' for Tab 1, and 'canceled' alias)
         if ($request->filled('status') && $request->status !== 'all') {
-            $query->where('status', $request->status);
+            $status = strtolower(trim((string) $request->status));
+            if ($status === 'history') {
+                $query->whereIn('status', ['completed', 'rejected', 'failed']);
+            } elseif (in_array($status, ['canceled', 'cancelled', 'rejected'])) {
+                $query->whereIn('status', ['rejected', 'cancelled', 'failed']);
+            } else {
+                $query->where('status', $status);
+            }
         }
 
-        // Filter by Requester Role
-        if ($request->filled('role') && $request->role !== 'all') {
-            if ($request->role === 'merchant') {
+        // Filter by Requester Role / Account Type
+        $roleFilter = strtolower(trim((string) ($request->input('account_type', $request->input('role', 'all')))));
+        if ($roleFilter !== 'all' && !empty($roleFilter)) {
+            if ($roleFilter === 'merchant') {
                 $query->whereHas('user.roles', function ($r) {
                     $r->whereIn('name', ['ECOMMERCE_MERCHANT', 'RESTAURANT_MERCHANT', 'HOTEL_MERCHANT', 'BUS_MERCHANT']);
                 });
-            } elseif ($request->role === 'rider') {
+            } elseif ($roleFilter === 'rider') {
                 $query->whereHas('user.roles', function ($r) {
                     $r->where('name', 'RIDER');
                 });
             }
         }
 
-        // Search by user name, email, phone, or mpesa_number
+        // Search by user name, email, mpesa_number, or transaction_reference
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -65,18 +73,20 @@ class PayoutController extends Controller
                   ->orWhere('transaction_reference', 'LIKE', "%{$search}%")
                   ->orWhereHas('user', function ($uq) use ($search) {
                       $uq->where('name', 'LIKE', "%{$search}%")
-                         ->orWhere('email', 'LIKE', "%{$search}%")
-                         ->orWhere('phone', 'LIKE', "%{$search}%");
+                         ->orWhere('email', 'LIKE', "%{$search}%");
                   });
             });
         }
 
-        // Date range filter
-        if ($request->filled('from_date')) {
-            $query->whereDate('created_at', '>=', $request->from_date);
+        // Date range filter (supports both date_from/date_to and from_date/to_date)
+        $dateFrom = $request->input('date_from', $request->input('from_date'));
+        $dateTo = $request->input('date_to', $request->input('to_date'));
+
+        if ($dateFrom) {
+            $query->whereDate('created_at', '>=', $dateFrom);
         }
-        if ($request->filled('to_date')) {
-            $query->whereDate('created_at', '<=', $request->to_date);
+        if ($dateTo) {
+            $query->whereDate('created_at', '<=', $dateTo);
         }
 
         // Calculate summary statistics
@@ -87,7 +97,8 @@ class PayoutController extends Controller
             'total_rejected_count'    => (int) PayoutRequest::where('status', 'rejected')->count(),
         ];
 
-        $payouts = $query->latest()->paginate(15);
+        $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
+        $payouts = $query->latest()->paginate($perPage);
         $payouts->through(fn($payout) => (new AdminPayoutResource($payout))->toArray($request));
 
         return $this->apiSuccess('Payout requests retrieved successfully', [

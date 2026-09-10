@@ -113,6 +113,11 @@ class WalletController extends Controller
             ]);
         });
 
+        // Notify all platform administrators of new withdrawal request
+        if ($payout) {
+            \App\Services\AdminNotificationService::notifyAdmins(new \App\Notifications\Admin\NewPayoutRequestNotification($payout));
+        }
+
         return $this->apiSuccess('Payout request submitted successfully!', [
             'payout' => new PayoutResource($payout)
         ], 201);

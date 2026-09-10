@@ -372,6 +372,11 @@ class CheckoutController extends Controller
             // Send multi-channel notification (Push, In-App, Email invoice)
             $order->user?->notify(new OrderPlacedNotification($order));
 
+            // Notify all platform administrators
+            \App\Services\AdminNotificationService::notifyAdmins(
+                new \App\Notifications\Admin\NewOrderPlacedAdminNotification($order)
+            );
+
             Log::info("Order #{$order->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
         } else {
             // Payment Failed or Cancelled by user
