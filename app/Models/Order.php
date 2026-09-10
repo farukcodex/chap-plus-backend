@@ -10,10 +10,26 @@ class Order extends Model
     use HasFactory;
     protected $fillable = [
         'order_number', 'user_id', 'merchant_profile_id', 'type', 'total_amount', 'delivery_fee', 
+        'merchant_commission_rate', 'admin_commission', 'merchant_earnings',
+        'rider_commission_rate', 'rider_earnings', 'commission_settled_at',
         'status', 'user_address_id', 'payment_method', 
         'mpesa_checkout_request_id', 'mpesa_receipt_number',
         'rider_id', 'cancellation_reason', 'rating', 'review_comment',
         'delivery_otp', 'distance_km', 'duration_minute',
+    ];
+
+    protected $casts = [
+        'total_amount'             => 'float',
+        'delivery_fee'             => 'float',
+        'merchant_commission_rate' => 'float',
+        'admin_commission'         => 'float',
+        'merchant_earnings'        => 'float',
+        'rider_commission_rate'    => 'float',
+        'rider_earnings'           => 'float',
+        'commission_settled_at'    => 'datetime',
+        'distance_km'              => 'float',
+        'duration_minute'          => 'integer',
+        'rating'                   => 'integer',
     ];
 
     public function scopeEcommerce($query)

@@ -181,70 +181,12 @@ class DeliveryController extends Controller
                 return $this->apiError('Invalid Delivery PIN', 400, ['code' => 'INVALID_OTP']);
             }
 
-            $riderEarnings = \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
-                $order->update(['status' => 'delivered']);
+            $order->update(['status' => 'delivered']);
 
-                // 1. Fetch Commission Settings
-                $merchantCommissionPercent = (float) (\App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00);
-                $riderCommissionPercent = (float) (\App\Models\PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.00);
-
-                $totalAmount = (float) $order->total_amount;
-                $deliveryFee = (float) ($order->delivery_fee ?? 0);
-
-                // Calculate splits
-                $adminMerchantCommission = $totalAmount * ($merchantCommissionPercent / 100);
-                $merchantEarnings = $totalAmount - $adminMerchantCommission;
-
-                $adminRiderCommission = $deliveryFee * ($riderCommissionPercent / 100);
-                $riderEarnings = $deliveryFee - $adminRiderCommission;
-
-                $totalAdminCommission = $adminMerchantCommission + $adminRiderCommission;
-
-                // 2. Admin Wallet
-                $adminUser = \App\Models\User::role('ADMIN')->first();
-                if ($adminUser) {
-                    $adminWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $adminUser->id]);
-                    $adminWallet->increment('balance', $totalAdminCommission);
-                    \App\Models\WalletTransaction::create([
-                        'wallet_id' => $adminWallet->id,
-                        'type' => 'credit',
-                        'amount' => $totalAdminCommission,
-                        'reference_type' => \App\Models\Order::class,
-                        'reference_id' => $order->id,
-                        'description' => "Platform commission for Order #{$order->id}",
-                    ]);
-                }
-
-                // 3. Merchant Wallet
-                if ($order->merchantProfile && $order->merchantProfile->user_id) {
-                    $merchantWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $order->merchantProfile->user_id]);
-                    $merchantWallet->increment('balance', $merchantEarnings);
-                    \App\Models\WalletTransaction::create([
-                        'wallet_id' => $merchantWallet->id,
-                        'type' => 'credit',
-                        'amount' => $merchantEarnings,
-                        'reference_type' => \App\Models\Order::class,
-                        'reference_id' => $order->id,
-                        'description' => "Earnings for Order #{$order->id}",
-                    ]);
-                }
-
-                // 4. Rider Wallet
-                if ($order->rider_id) {
-                    $riderWallet = \App\Models\Wallet::firstOrCreate(['user_id' => $order->rider_id]);
-                    $riderWallet->increment('balance', $riderEarnings);
-                    \App\Models\WalletTransaction::create([
-                        'wallet_id' => $riderWallet->id,
-                        'type' => 'credit',
-                        'amount' => $riderEarnings,
-                        'reference_type' => \App\Models\Order::class,
-                        'reference_id' => $order->id,
-                        'description' => "Delivery fee for Order #{$order->id}",
-                    ]);
-                }
-
-                return $riderEarnings;
-            });
+            // Settle commission snapshot and credit wallets atomically
+            app(\App\Services\OrderSettlementService::class)->settle($order);
+            $order->refresh();
+            $riderEarnings = (float) $order->rider_earnings;
 
             $order->load(['merchantProfile', 'user', 'rider', 'items.product.images', 'items.product.category.parent', 'items.variant', 'address']);
 

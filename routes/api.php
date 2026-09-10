@@ -344,6 +344,40 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::patch('/{id}/block', [\App\Http\Controllers\Admin\UserController::class, 'updateStatus']);
     });
 
+    // Orders Management
+    Route::prefix('orders')->group(function () {
+        // Ecommerce Orders
+        Route::prefix('ecommerce')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\EcommerceOrderController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Admin\EcommerceOrderController::class, 'show']);
+            Route::patch('/{id}/status', [\App\Http\Controllers\Admin\EcommerceOrderController::class, 'updateStatus']);
+        });
+
+        // Restaurant Food Orders
+        Route::prefix('restaurant')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\RestaurantOrderController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Admin\RestaurantOrderController::class, 'show']);
+            Route::patch('/{id}/status', [\App\Http\Controllers\Admin\RestaurantOrderController::class, 'updateStatus']);
+        });
+    });
+
+    // Bookings Management
+    Route::prefix('bookings')->group(function () {
+        // Bus Bookings
+        Route::prefix('bus')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\BusBookingController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Admin\BusBookingController::class, 'show']);
+            Route::patch('/{id}/status', [\App\Http\Controllers\Admin\BusBookingController::class, 'updateStatus']);
+        });
+
+        // Hotel Reservations
+        Route::prefix('hotel')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\HotelBookingController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Admin\HotelBookingController::class, 'show']);
+            Route::patch('/{id}/status', [\App\Http\Controllers\Admin\HotelBookingController::class, 'updateStatus']);
+        });
+    });
+
     // Refunds
     Route::prefix('refunds')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\RefundController::class, 'index']);
@@ -370,6 +404,20 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::get('/', [\App\Http\Controllers\Admin\MerchantController::class, 'index']);
         Route::get('/{id}', [\App\Http\Controllers\Admin\MerchantController::class, 'show']);
         Route::patch('/{id}/status', [\App\Http\Controllers\Admin\MerchantController::class, 'updateStatus']);
+    });
+
+    // Platform Earnings & Commissions
+    Route::prefix('earnings')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\EarningController::class, 'index']);
+        Route::get('/export', [\App\Http\Controllers\Admin\EarningController::class, 'export']);
+    });
+
+    // Analytics Dashboard (4 Modular Endpoints)
+    Route::prefix('analytics')->group(function () {
+        Route::get('/overview', [\App\Http\Controllers\Admin\AnalyticsController::class, 'overview']);
+        Route::get('/revenue', [\App\Http\Controllers\Admin\AnalyticsController::class, 'revenue']);
+        Route::get('/categories', [\App\Http\Controllers\Admin\AnalyticsController::class, 'categories']);
+        Route::get('/orders-performance', [\App\Http\Controllers\Admin\AnalyticsController::class, 'ordersPerformance']);
     });
 });
 
