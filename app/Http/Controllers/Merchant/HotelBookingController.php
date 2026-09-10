@@ -83,7 +83,7 @@ class HotelBookingController extends Controller
         try {
             \Illuminate\Support\Facades\DB::beginTransaction();
             
-            $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
+            $merchantCommissionPercent = \App\Models\PlatformSetting::getCommissionRate('hotel');
             $adminCommission = $booking->total_price * ($merchantCommissionPercent / 100);
             $merchantEarnings = $booking->total_price - $adminCommission;
 

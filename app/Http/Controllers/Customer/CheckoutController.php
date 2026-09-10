@@ -281,7 +281,7 @@ class CheckoutController extends Controller
                         ]);
 
                         // INSTANT PAYOUT LOGIC
-                        $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
+                        $merchantCommissionPercent = \App\Models\PlatformSetting::getCommissionRate('bus');
                         $adminCommission = $busBooking->total_price * ($merchantCommissionPercent / 100);
                         $merchantEarnings = $busBooking->total_price - $adminCommission;
 

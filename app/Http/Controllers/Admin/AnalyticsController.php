@@ -46,8 +46,10 @@ class AnalyticsController extends Controller
 
         // 1. Total Platform Lifetime Earnings
         $ordersEarning = (float) Order::where('status', 'delivered')->sum('admin_commission');
-        $busEarning = (float) BusBooking::where('status', 'paid')->sum('total_price') * ($commissionRate / 100);
-        $hotelEarning = (float) HotelBooking::whereIn('status', ['paid', 'confirmed', 'checked_in', 'checked_out'])->sum('total_price') * ($commissionRate / 100);
+        $busRate = PlatformSetting::getCommissionRate('bus') / 100;
+        $hotelRate = PlatformSetting::getCommissionRate('hotel') / 100;
+        $busEarning = (float) BusBooking::where('status', 'paid')->sum('total_price') * $busRate;
+        $hotelEarning = (float) HotelBooking::whereIn('status', ['paid', 'confirmed', 'checked_in', 'checked_out'])->sum('total_price') * $hotelRate;
 
         $totalEarning = round($ordersEarning + $busEarning + $hotelEarning, 2);
 
@@ -116,15 +118,18 @@ class AnalyticsController extends Controller
         $totalYearRevenue = 0.0;
         $totalYearGross = 0.0;
 
+        $busRate = PlatformSetting::getCommissionRate('bus') / 100;
+        $hotelRate = PlatformSetting::getCommissionRate('hotel') / 100;
+
         foreach ($monthNames as $mNum => $mName) {
             $orderEarn = (float) ($ordersMonthly[$mNum]->earnings ?? 0);
             $orderGross = (float) ($ordersMonthly[$mNum]->gross ?? 0);
 
             $busGross = (float) ($busMonthly[$mNum]->gross ?? 0);
-            $busEarn = round($busGross * ($commissionRate / 100), 2);
+            $busEarn = round($busGross * $busRate, 2);
 
             $hotelGross = (float) ($hotelMonthly[$mNum]->gross ?? 0);
-            $hotelEarn = round($hotelGross * ($commissionRate / 100), 2);
+            $hotelEarn = round($hotelGross * $hotelRate, 2);
 
             $monthRevenue = round($orderEarn + $busEarn + $hotelEarn, 2);
             $monthGross = round($orderGross + $busGross + $hotelGross, 2);

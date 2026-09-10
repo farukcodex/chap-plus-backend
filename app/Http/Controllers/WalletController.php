@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PlatformSetting;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\PayoutRequest;
@@ -17,6 +18,8 @@ class WalletController extends Controller
     public function index(Request $request): JsonResponse
     {
         $wallet = Wallet::firstOrCreate(['user_id' => $request->user()->id]);
+        $currency = $wallet->currency ?? (PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
+        $minPayout = PlatformSetting::getMinPayoutForCurrency($currency);
 
         $todayEarnings = WalletTransaction::where('wallet_id', $wallet->id)
             ->where('type', 'credit')
@@ -29,10 +32,11 @@ class WalletController extends Controller
             ->sum('amount');
 
         $data = [
-            'balance' => $wallet->balance,
-            'currency' => $wallet->currency,
-            'today_earnings' => $todayEarnings,
-            'this_week_earnings' => $thisWeekEarnings,
+            'balance'           => (float) $wallet->balance,
+            'currency'          => (string) $currency,
+            'min_payout_amount' => (float) $minPayout,
+            'today_earnings'    => (float) $todayEarnings,
+            'this_week_earnings'=> (float) $thisWeekEarnings,
         ];
 
         if ($request->user()->hasRole('RIDER')) {
@@ -72,12 +76,16 @@ class WalletController extends Controller
             return $this->apiError('Only registered merchants and riders can request payouts.', 403);
         }
 
-        $request->validate([
-            'amount' => 'required|numeric|min:100',
-            'mpesa_number' => 'required|string',
-        ]);
-
         $wallet = Wallet::firstOrCreate(['user_id' => $user->id]);
+        $currency = $wallet->currency ?? (PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
+        $minPayout = PlatformSetting::getMinPayoutForCurrency($currency);
+
+        $request->validate([
+            'amount'       => ['required', 'numeric', "min:{$minPayout}"],
+            'mpesa_number' => 'required|string',
+        ], [
+            'amount.min' => "The minimum payout amount for {$currency} is {$currency} " . number_format($minPayout, 2) . ".",
+        ]);
 
         if ($wallet->balance < $request->amount) {
             return $this->apiError('Insufficient balance for payout', 400);

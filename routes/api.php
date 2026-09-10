@@ -331,8 +331,27 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
         Route::get('/recent-users', [\App\Http\Controllers\Admin\DashboardController::class, 'recentUsers']);
     });
 
-    Route::get('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'index']);
-    Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'store']);
+    // Commissions Management
+    Route::get('/commissions', [\App\Http\Controllers\Admin\CommissionController::class, 'index']);
+    Route::put('/commissions', [\App\Http\Controllers\Admin\CommissionController::class, 'update']);
+    Route::post('/commissions', [\App\Http\Controllers\Admin\CommissionController::class, 'update']);
+
+    // Delivery Fees Management
+    Route::prefix('delivery-fees')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\DeliveryFeeController::class, 'index']);
+        Route::post('/auto-sync', [\App\Http\Controllers\Admin\DeliveryFeeController::class, 'autoSync']);
+        Route::post('/', [\App\Http\Controllers\Admin\DeliveryFeeController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Admin\DeliveryFeeController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Admin\DeliveryFeeController::class, 'destroy']);
+    });
+
+    // Payout Settings
+    Route::prefix('payout-settings')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\PayoutSettingController::class, 'index']);
+        Route::put('/', [\App\Http\Controllers\Admin\PayoutSettingController::class, 'update']);
+        Route::post('/', [\App\Http\Controllers\Admin\PayoutSettingController::class, 'update']);
+        Route::post('/auto-sync', [\App\Http\Controllers\Admin\PayoutSettingController::class, 'autoSync']);
+    });
 
     Route::get('/pages/{slug}', [\App\Http\Controllers\Admin\PageController::class, 'show']);
     Route::put('/pages/{slug}', [\App\Http\Controllers\Admin\PageController::class, 'update']);

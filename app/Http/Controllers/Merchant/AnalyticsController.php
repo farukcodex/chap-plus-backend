@@ -105,7 +105,7 @@ class AnalyticsController extends Controller
     private function getHotelAnalytics($merchant, $wallet, $monthlyEarnings)
     {
         // Calculate Pending Escrow Earnings (For Hotels)
-        $merchantCommissionPercent = \App\Models\PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
+        $merchantCommissionPercent = \App\Models\PlatformSetting::getCommissionRate('hotel');
         
         $pendingHotelGross = HotelBooking::where('merchant_profile_id', $merchant->id)
             ->whereIn('status', ['paid', 'confirmed'])

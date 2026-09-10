@@ -420,7 +420,7 @@ class BusController extends Controller
         ]);
 
         // 3. Instant commission split: Admin commission & Merchant earnings
-        $merchantCommissionPercent = PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 10.00;
+        $merchantCommissionPercent = PlatformSetting::getCommissionRate('bus');
         $adminCommission = $totalPrice * ($merchantCommissionPercent / 100);
         $merchantEarnings = $totalPrice - $adminCommission;
 

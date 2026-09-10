@@ -18,6 +18,7 @@ class PayoutResource extends JsonResource
         return [
             'id'                    => (int) $this->id,
             'amount'                => (float) $this->amount,
+            'currency'              => (string) ($this->user?->wallet?->currency ?? 'KES'),
             'status'                => (string) $this->status,
             'payout_method'         => (string) $this->payout_method,
             'mpesa_number'          => (string) $this->mpesa_number,

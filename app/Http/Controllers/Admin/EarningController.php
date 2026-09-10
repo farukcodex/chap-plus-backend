@@ -147,15 +147,28 @@ class EarningController extends Controller
         $monthHotelGross = (float) HotelBooking::whereIn('status', $hotelStatuses)->whereBetween('created_at', [$startOfMonth, $endOfMonth])->sum('total_price');
         $todayHotelGross = (float) HotelBooking::whereIn('status', $hotelStatuses)->whereBetween('created_at', [$startOfDay, $endOfDay])->sum('total_price');
 
-        // Totals
-        $rateMultiplier = $commissionRate / 100;
-        $totalEarnings = round(($totalOrdersGross + $totalBusGross + $totalHotelGross) * $rateMultiplier, 2);
-        $thisMonthEarnings = round(($monthOrdersGross + $monthBusGross + $monthHotelGross) * $rateMultiplier, 2);
-        $todayEarnings = round(($todayOrdersGross + $todayBusGross + $todayHotelGross) * $rateMultiplier, 2);
+        // Totals by service rate
+        $ecomRate = PlatformSetting::getCommissionRate('ecommerce') / 100;
+        $restaurantRate = PlatformSetting::getCommissionRate('restaurant') / 100;
+        $busRate = PlatformSetting::getCommissionRate('bus') / 100;
+        $hotelRate = PlatformSetting::getCommissionRate('hotel') / 100;
+
+        $totalEcomGross = (float) Order::ecommerce()->where('status', 'delivered')->selectRaw('COALESCE(SUM(total_amount + COALESCE(delivery_fee, 0)), 0) as aggregate')->value('aggregate');
+        $monthEcomGross = (float) Order::ecommerce()->where('status', 'delivered')->whereBetween('created_at', [$startOfMonth, $endOfMonth])->selectRaw('COALESCE(SUM(total_amount + COALESCE(delivery_fee, 0)), 0) as aggregate')->value('aggregate');
+        $todayEcomGross = (float) Order::ecommerce()->where('status', 'delivered')->whereBetween('created_at', [$startOfDay, $endOfDay])->selectRaw('COALESCE(SUM(total_amount + COALESCE(delivery_fee, 0)), 0) as aggregate')->value('aggregate');
+
+        $totalRestGross = (float) Order::restaurant()->where('status', 'delivered')->selectRaw('COALESCE(SUM(total_amount + COALESCE(delivery_fee, 0)), 0) as aggregate')->value('aggregate');
+        $monthRestGross = (float) Order::restaurant()->where('status', 'delivered')->whereBetween('created_at', [$startOfMonth, $endOfMonth])->selectRaw('COALESCE(SUM(total_amount + COALESCE(delivery_fee, 0)), 0) as aggregate')->value('aggregate');
+        $todayRestGross = (float) Order::restaurant()->where('status', 'delivered')->whereBetween('created_at', [$startOfDay, $endOfDay])->selectRaw('COALESCE(SUM(total_amount + COALESCE(delivery_fee, 0)), 0) as aggregate')->value('aggregate');
+
+        $totalEarnings = round(($totalEcomGross * $ecomRate) + ($totalRestGross * $restaurantRate) + ($totalBusGross * $busRate) + ($totalHotelGross * $hotelRate), 2);
+        $thisMonthEarnings = round(($monthEcomGross * $ecomRate) + ($monthRestGross * $restaurantRate) + ($monthBusGross * $busRate) + ($monthHotelGross * $hotelRate), 2);
+        $todayEarnings = round(($todayEcomGross * $ecomRate) + ($todayRestGross * $restaurantRate) + ($todayBusGross * $busRate) + ($todayHotelGross * $hotelRate), 2);
 
         return [
             'currency'            => $currency,
             'commission_rate'     => $commissionRate,
+            'commission_rates'    => PlatformSetting::getCommissionRates(),
             'total_earnings'      => $totalEarnings,
             'this_month_earnings' => $thisMonthEarnings,
             'today_earnings'      => $todayEarnings,
@@ -177,6 +190,7 @@ class EarningController extends Controller
 
         // 1. Ecommerce Orders
         if (in_array($merchantType, ['all', 'product', 'ecommerce'])) {
+            $ecomRate = PlatformSetting::getCommissionRate('ecommerce');
             $orderQuery = Order::ecommerce()->with([
                 'merchantProfile.user:id,name,email',
                 'items.product:id,name',
@@ -184,8 +198,8 @@ class EarningController extends Controller
 
             $this->applyOrderFilters($orderQuery, $search, $statusFilter, $dateFrom, $dateTo);
 
-            $ecommerceRecords = $orderQuery->get()->map(function (Order $order) use ($commissionRate, $defaultCurrency) {
-                return $this->formatOrderRecord($order, 'Product Merchant', $commissionRate, $defaultCurrency);
+            $ecommerceRecords = $orderQuery->get()->map(function (Order $order) use ($ecomRate, $defaultCurrency) {
+                return $this->formatOrderRecord($order, 'Product Merchant', $ecomRate, $defaultCurrency);
             });
 
             $collection = $collection->concat($ecommerceRecords);
@@ -193,6 +207,7 @@ class EarningController extends Controller
 
         // 2. Restaurant Orders
         if (in_array($merchantType, ['all', 'restaurant', 'food'])) {
+            $restaurantRate = PlatformSetting::getCommissionRate('restaurant');
             $restaurantQuery = Order::restaurant()->with([
                 'merchantProfile.user:id,name,email',
                 'items.product:id,name',
@@ -200,8 +215,8 @@ class EarningController extends Controller
 
             $this->applyOrderFilters($restaurantQuery, $search, $statusFilter, $dateFrom, $dateTo);
 
-            $restaurantRecords = $restaurantQuery->get()->map(function (Order $order) use ($commissionRate, $defaultCurrency) {
-                return $this->formatOrderRecord($order, 'Restaurant Merchant', $commissionRate, $defaultCurrency);
+            $restaurantRecords = $restaurantQuery->get()->map(function (Order $order) use ($restaurantRate, $defaultCurrency) {
+                return $this->formatOrderRecord($order, 'Restaurant Merchant', $restaurantRate, $defaultCurrency);
             });
 
             $collection = $collection->concat($restaurantRecords);
@@ -238,10 +253,11 @@ class EarningController extends Controller
                 $busQuery->whereDate('created_at', '<=', $dateTo);
             }
 
-            $busRecords = $busQuery->get()->map(function (BusBooking $booking) use ($commissionRate, $defaultCurrency) {
+            $busRate = PlatformSetting::getCommissionRate('bus');
+            $busRecords = $busQuery->get()->map(function (BusBooking $booking) use ($busRate, $defaultCurrency) {
                 $price = (float) $booking->total_price;
                 $isCompleted = ($booking->status === 'paid');
-                $platformEarning = $isCompleted ? round($price * ($commissionRate / 100), 2) : 0.00;
+                $platformEarning = $isCompleted ? round($price * ($busRate / 100), 2) : 0.00;
                 $route = $booking->bus ? "{$booking->bus->departure_place} to {$booking->bus->destination_place}" : 'Bus Ticket';
                 $orderNumber = '#BUS-' . str_pad($booking->id, 5, '0', STR_PAD_LEFT);
 
@@ -258,7 +274,7 @@ class EarningController extends Controller
                         'email'         => $booking->merchantProfile?->user?->email,
                     ],
                     'order_price'        => $price,
-                    'commission_percent' => $commissionRate,
+                    'commission_percent' => $busRate,
                     'platform_earning'   => $platformEarning,
                     'merchant_earning'   => round($price - $platformEarning, 2),
                     'currency'           => $booking->merchantProfile?->currency ?? $defaultCurrency,
@@ -301,10 +317,11 @@ class EarningController extends Controller
                 $hotelQuery->whereDate('created_at', '<=', $dateTo);
             }
 
-            $hotelRecords = $hotelQuery->get()->map(function (HotelBooking $booking) use ($commissionRate, $defaultCurrency, $hotelCompletedStatuses) {
+            $hotelRate = PlatformSetting::getCommissionRate('hotel');
+            $hotelRecords = $hotelQuery->get()->map(function (HotelBooking $booking) use ($hotelRate, $defaultCurrency, $hotelCompletedStatuses) {
                 $price = (float) $booking->total_price;
                 $isCompleted = in_array($booking->status, $hotelCompletedStatuses);
-                $platformEarning = $isCompleted ? round($price * ($commissionRate / 100), 2) : 0.00;
+                $platformEarning = $isCompleted ? round($price * ($hotelRate / 100), 2) : 0.00;
                 $hotelName = $booking->hotel?->name ?? 'Hotel Reservation';
                 $orderNumber = '#HTL-' . str_pad($booking->id, 5, '0', STR_PAD_LEFT);
 
@@ -321,7 +338,7 @@ class EarningController extends Controller
                         'email'         => $booking->merchantProfile?->user?->email,
                     ],
                     'order_price'        => $price,
-                    'commission_percent' => $commissionRate,
+                    'commission_percent' => $hotelRate,
                     'platform_earning'   => $platformEarning,
                     'merchant_earning'   => round($price - $platformEarning, 2),
                     'currency'           => $booking->merchantProfile?->currency ?? $defaultCurrency,

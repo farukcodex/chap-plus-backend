@@ -17,8 +17,8 @@ class OrderSettlementService
      */
     public function calculateSplits(Order $order): array
     {
-        $merchantRate = (float) (PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 11.00);
-        $riderRate = (float) (PlatformSetting::where('key', 'rider_commission_percent')->value('value') ?? 0.00);
+        $merchantRate = PlatformSetting::getCommissionRate($order->type ?: 'ecommerce');
+        $riderRate = PlatformSetting::getCommissionRate('rider');
 
         $totalAmount = (float) $order->total_amount;
         $deliveryFee = (float) ($order->delivery_fee ?? 0);
