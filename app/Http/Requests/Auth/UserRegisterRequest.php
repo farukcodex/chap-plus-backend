@@ -26,8 +26,13 @@ class UserRegisterRequest extends FormRequest
             'name' => 'nullable|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',
             'password' => ['required', 'confirmed', Password::defaults()],
-            'country' => 'required|string|size:2|alpha:ascii', 
-            'city' => 'required|string|max:255',
+            'country'   => 'sometimes|nullable|string|size:2|alpha:ascii',
+            'city'      => 'sometimes|nullable|string|max:255',
+            'latitude'  => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'lat'       => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'lon'       => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'lng'       => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
         ];
     }
 

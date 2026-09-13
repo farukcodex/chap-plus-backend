@@ -22,10 +22,40 @@ class UserRegisterController extends Controller
     public function store(UserRegisterRequest $request, OtpService $otpService): JsonResponse
     {
         $validated = $request->validated();
-        $countryCode = strtoupper($validated['country']);
+        $countryCode = !empty($validated['country']) ? strtoupper(trim($validated['country'])) : null;
+        $city = !empty($validated['city']) ? trim($validated['city']) : null;
+        $currency = null;
+
+        $latitude = null;
+        if ($request->filled('latitude')) {
+            $latitude = (float) $request->input('latitude');
+        } elseif ($request->filled('lat')) {
+            $latitude = (float) $request->input('lat');
+        }
+
+        $longitude = null;
+        if ($request->filled('longitude')) {
+            $longitude = (float) $request->input('longitude');
+        } elseif ($request->filled('lon')) {
+            $longitude = (float) $request->input('lon');
+        } elseif ($request->filled('lng')) {
+            $longitude = (float) $request->input('lng');
+        }
+
+        if ($countryCode !== null) {
+            try {
+                $isoData = (new \League\ISO3166\ISO3166)->alpha2($countryCode);
+                $currency = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
+            } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
+                return response()->json([
+                    'message' => 'The provided country code is not a valid ISO 3166-1 alpha-2 code.',
+                    'errors' => ['country' => ['Invalid country code.']]
+                ], 422);
+            }
+        }
 
         try {
-            $user = DB::transaction(function () use ($validated, $countryCode, $otpService): User {
+            $user = DB::transaction(function () use ($validated, $countryCode, $city, $currency, $latitude, $longitude, $otpService): User {
                 $name = !empty($validated['name']) ? trim($validated['name']) : explode('@', $validated['email'])[0];
 
                 $user = User::create([
@@ -36,19 +66,13 @@ class UserRegisterController extends Controller
 
                 $user->assignRole('USER');
 
-                // Auto-detect Currency from Country code
-                try {
-                    $isoData = (new \League\ISO3166\ISO3166)->alpha2($countryCode);
-                    $currency = isset($isoData['currency'][0]) ? $isoData['currency'][0] : null;
-                } catch (\League\ISO3166\Exception\OutOfBoundsException $e) {
-                    throw new \InvalidArgumentException('INVALID_COUNTRY_CODE');
-                }
-
                 \App\Models\UserProfile::create([
-                    'user_id'  => $user->id,
-                    'country'  => $countryCode,
-                    'city'     => $validated['city'],
-                    'currency' => $currency,
+                    'user_id'   => $user->id,
+                    'country'   => $countryCode,
+                    'city'      => $city,
+                    'currency'  => $currency,
+                    'latitude'  => $latitude,
+                    'longitude' => $longitude,
                 ]);
 
                 $otpResult = $otpService->sendEmailOtp($user, 'register');
