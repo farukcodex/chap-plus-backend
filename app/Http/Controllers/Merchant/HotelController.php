@@ -19,11 +19,12 @@ class HotelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $merchantProfile = $request->user()->merchantProfile;
+        $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
 
         $hotels = Hotel::with(['images', 'reviews'])
             ->where('merchant_profile_id', $merchantProfile->id)
             ->latest()
-            ->paginate(15);
+            ->paginate($perPage);
 
         return $this->apiSuccess('Hotels retrieved successfully', [
             'hotels' => $hotels
@@ -36,6 +37,10 @@ class HotelController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'address' => 'nullable|string|max:500',
+            'city' => 'nullable|string|max:255',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lon' => 'nullable|numeric|between:-180,180',
             'description' => 'nullable|string',
             'price_per_night' => 'required|numeric|min:0',
             'room_quantity' => 'required|integer|min:1',
@@ -49,13 +54,26 @@ class HotelController extends Controller
         try {
             DB::beginTransaction();
 
+            $address = $request->filled('address') ? trim($request->input('address')) : $merchantProfile->address;
+            $city = $request->filled('city') ? trim($request->input('city')) : $merchantProfile->city;
+            $lat = $request->filled('lat')
+                ? (float) $request->input('lat')
+                : ($merchantProfile->latitude !== null ? (float) $merchantProfile->latitude : null);
+            $lon = $request->filled('lon')
+                ? (float) $request->input('lon')
+                : ($merchantProfile->longitude !== null ? (float) $merchantProfile->longitude : null);
+
             $hotel = Hotel::create([
                 'merchant_profile_id' => $merchantProfile->id,
                 'name' => $validated['name'],
+                'address' => $address,
+                'city' => $city,
                 'description' => $validated['description'] ?? null,
                 'price_per_night' => $validated['price_per_night'],
                 'room_quantity' => $validated['room_quantity'],
                 'facilities' => $validated['facilities'] ?? [],
+                'lat' => $lat,
+                'lon' => $lon,
                 'is_active' => $validated['is_active'] ?? true,
             ]);
 
@@ -106,6 +124,10 @@ class HotelController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'address' => 'nullable|string|max:500',
+            'city' => 'nullable|string|max:255',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lon' => 'nullable|numeric|between:-180,180',
             'description' => 'nullable|string',
             'price_per_night' => 'required|numeric|min:0',
             'room_quantity' => 'required|integer|min:0',
@@ -121,14 +143,29 @@ class HotelController extends Controller
         try {
             DB::beginTransaction();
 
-            $hotel->update([
+            $updateData = [
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'price_per_night' => $validated['price_per_night'],
                 'room_quantity' => $validated['room_quantity'],
                 'facilities' => $validated['facilities'] ?? $hotel->facilities,
                 'is_active' => $validated['is_active'] ?? $hotel->is_active,
-            ]);
+            ];
+
+            if ($request->has('address')) {
+                $updateData['address'] = $request->input('address');
+            }
+            if ($request->has('city')) {
+                $updateData['city'] = $request->input('city');
+            }
+            if ($request->has('lat')) {
+                $updateData['lat'] = $request->input('lat') !== null ? (float) $request->input('lat') : null;
+            }
+            if ($request->has('lon')) {
+                $updateData['lon'] = $request->input('lon') !== null ? (float) $request->input('lon') : null;
+            }
+
+            $hotel->update($updateData);
 
             if (!empty($validated['images_to_delete'])) {
                 $imagesToDelete = HotelImage::where('hotel_id', $hotel->id)

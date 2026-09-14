@@ -13,10 +13,14 @@ class Hotel extends Model
     protected $fillable = [
         'merchant_profile_id',
         'name',
+        'address',
+        'city',
         'description',
         'price_per_night',
         'room_quantity',
         'facilities',
+        'lat',
+        'lon',
         'is_active',
     ];
 
@@ -24,6 +28,8 @@ class Hotel extends Model
         'facilities' => 'array',
         'is_active' => 'boolean',
         'price_per_night' => 'decimal:2',
+        'lat' => 'float',
+        'lon' => 'float',
     ];
 
     public function merchantProfile()

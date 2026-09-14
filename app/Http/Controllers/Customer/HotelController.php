@@ -18,6 +18,7 @@ class HotelController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
         $query = Hotel::with(['images', 'merchantProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
@@ -39,7 +40,18 @@ class HotelController extends Controller
             $query->where('merchant_profile_id', $request->host_id);
         }
 
-        $properties = $query->latest()->paginate(15);
+        // City filter
+        if ($request->filled('city')) {
+            $city = trim($request->city);
+            $query->where(function ($q) use ($city) {
+                $q->where('city', 'like', "%{$city}%")
+                  ->orWhereHas('merchantProfile', function ($mq) use ($city) {
+                      $mq->where('city', 'like', "%{$city}%");
+                  });
+            });
+        }
+
+        $properties = $query->latest()->paginate($perPage);
 
         return $this->apiSuccess('Properties retrieved successfully', [
             'properties' => $properties
@@ -73,7 +85,7 @@ class HotelController extends Controller
     {
         $query = MerchantProfile::withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->whereHas('user.roles', function($q) {
+            ->whereHas('user.roles', function ($q) {
                 $q->where('name', 'HOTEL_MERCHANT');
             });
 
@@ -89,12 +101,12 @@ class HotelController extends Controller
      */
     public function hostDetails(string $id): JsonResponse
     {
-        $host = MerchantProfile::with(['hotels' => function($q) {
-                $q->where('is_active', true)->with('images');
-            }])
+        $host = MerchantProfile::with(['hotels' => function ($q) {
+            $q->where('is_active', true)->with('images');
+        }])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->whereHas('user.roles', function($q) {
+            ->whereHas('user.roles', function ($q) {
                 $q->where('name', 'HOTEL_MERCHANT');
             })
             ->find($id);
