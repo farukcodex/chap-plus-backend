@@ -30,6 +30,7 @@ class Hotel extends Model
         'price_per_night' => 'decimal:2',
         'lat' => 'float',
         'lon' => 'float',
+        'distance_km' => 'float',
     ];
 
     public function merchantProfile()
