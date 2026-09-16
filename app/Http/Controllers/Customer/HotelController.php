@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Hotel;
 use App\Models\MerchantProfile;
 use App\Traits\ApiResponseTrait;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,19 +25,26 @@ class HotelController extends Controller
         $profileLon = $user?->userProfile?->longitude;
 
         $validated = $request->validate([
-            'min_price'  => 'nullable|numeric|min:0',
-            'max_price'  => ['nullable', 'numeric', 'min:0', function ($attribute, $value, $fail) use ($request) {
+            'min_price'      => 'nullable|numeric|min:0',
+            'max_price'      => ['nullable', 'numeric', 'min:0', function ($attribute, $value, $fail) use ($request) {
                 if ($request->filled('min_price') && (float) $value < (float) $request->input('min_price')) {
                     $fail('The max price must be greater than or equal to the min price.');
                 }
             }],
-            'min_rooms'  => 'nullable|integer|min:1',
-            'host_id'    => 'nullable|integer|exists:merchant_profiles,id',
-            'city'       => 'nullable|string|max:255',
-            'lat'        => 'nullable|numeric|between:-90,90',
-            'lon'        => 'nullable|numeric|between:-180,180',
-            'radius'     => 'nullable|numeric|min:0',
-            'sort_by'    => [
+            'min_rooms'      => 'nullable|integer|min:1',
+            'host_id'        => 'nullable|integer|exists:merchant_profiles,id',
+            'city'           => 'nullable|string|max:255',
+            'location'       => 'nullable|string|max:255',
+            'destination'    => 'nullable|string|max:255',
+            'check_in_date'  => 'nullable|date|after_or_equal:today',
+            'check_out_date' => 'nullable|date|after:check_in_date',
+            'date'           => 'nullable|date|after_or_equal:today',
+            'guests'         => 'nullable|integer|min:1|max:50',
+            'rooms'          => 'nullable|integer|min:1|max:50',
+            'lat'            => 'nullable|numeric|between:-90,90',
+            'lon'            => 'nullable|numeric|between:-180,180',
+            'radius'         => 'nullable|numeric|min:0',
+            'sort_by'        => [
                 'nullable',
                 'string',
                 'in:popular,top_rated,price_low,price_high,price_asc,price_desc,latest,near,nearby',
@@ -50,13 +58,13 @@ class HotelController extends Controller
                     }
                 }
             ],
-            'popular'    => ['nullable', function ($attribute, $value, $fail) {
+            'popular'        => ['nullable', function ($attribute, $value, $fail) {
                 if (!is_bool($value) && !in_array(strtolower((string) $value), ['true', 'false', '1', '0', 'yes', 'no'], true)) {
                     $fail('The popular field must be true or false.');
                 }
             }],
-            'per_page'   => 'nullable|integer|min:1|max:100',
-            'page'       => 'nullable|integer|min:1',
+            'per_page'       => 'nullable|integer|min:1|max:100',
+            'page'           => 'nullable|integer|min:1',
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 15);
@@ -116,6 +124,82 @@ class HotelController extends Controller
                       $mq->where('city', 'like', "%{$city}%");
                   });
             });
+        }
+
+        // Location / Destination search ("Find Your Dream Stay" - Location)
+        $locationKeyword = $validated['location'] ?? $validated['destination'] ?? null;
+        if (!empty($locationKeyword)) {
+            $searchTerm = trim($locationKeyword);
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('hotels.name', 'like', "%{$searchTerm}%")
+                  ->orWhere('hotels.city', 'like', "%{$searchTerm}%")
+                  ->orWhere('hotels.address', 'like', "%{$searchTerm}%")
+                  ->orWhereHas('merchantProfile', function ($mq) use ($searchTerm) {
+                      $mq->where('business_name', 'like', "%{$searchTerm}%")
+                         ->orWhere('city', 'like', "%{$searchTerm}%")
+                         ->orWhere('address', 'like', "%{$searchTerm}%");
+                  });
+            });
+        }
+
+        // Resolve dates ("Find Your Dream Stay" - Date)
+        $checkInDate = $validated['check_in_date'] ?? null;
+        $checkOutDate = $validated['check_out_date'] ?? null;
+        if (!$checkInDate && !empty($validated['date'])) {
+            $checkInDate = Carbon::parse($validated['date'])->toDateString();
+            $checkOutDate = Carbon::parse($validated['date'])->addDay()->toDateString();
+        }
+
+        // Guests & Rooms capacity calculation ("Find Your Dream Stay" - Guest)
+        $guests = isset($validated['guests']) ? (int) $validated['guests'] : null;
+        $requestedRooms = isset($validated['rooms']) ? (int) $validated['rooms'] : 1;
+
+        if ($guests !== null) {
+            // Overall maximum hotel capacity must accommodate guests
+            // (room_quantity * max_guests >= guests)
+            $query->whereRaw('(hotels.room_quantity * hotels.max_guests) >= ?', [$guests]);
+        }
+
+        // Live room availability check if dates are specified or rooms requested
+        if ($checkInDate && $checkOutDate) {
+            $lockCutoff = Carbon::now()->subMinutes(15);
+
+            if ($guests !== null) {
+                // If guests provided, required rooms = CEIL(guests / max_guests), at least requestedRooms
+                // hotels.room_quantity - booked_rooms >= CEIL(guests / hotels.max_guests)
+                $query->whereRaw(
+                    "(hotels.room_quantity - COALESCE((
+                        SELECT SUM(rooms_booked) 
+                        FROM hotel_bookings 
+                        WHERE hotel_bookings.hotel_id = hotels.id
+                          AND (
+                              hotel_bookings.status IN ('paid', 'checked_in')
+                              OR (hotel_bookings.status = 'pending_payment' AND hotel_bookings.created_at >= ?)
+                          )
+                          AND hotel_bookings.check_in_date < ?
+                          AND hotel_bookings.check_out_date > ?
+                    ), 0)) >= GREATEST(?, CEIL(? / hotels.max_guests))",
+                    [$lockCutoff, $checkOutDate, $checkInDate, $requestedRooms, $guests]
+                );
+            } else {
+                // Check against requestedRooms
+                $query->whereRaw(
+                    "(hotels.room_quantity - COALESCE((
+                        SELECT SUM(rooms_booked) 
+                        FROM hotel_bookings 
+                        WHERE hotel_bookings.hotel_id = hotels.id
+                          AND (
+                              hotel_bookings.status IN ('paid', 'checked_in')
+                              OR (hotel_bookings.status = 'pending_payment' AND hotel_bookings.created_at >= ?)
+                          )
+                          AND hotel_bookings.check_in_date < ?
+                          AND hotel_bookings.check_out_date > ?
+                    ), 0)) >= ?",
+                    [$lockCutoff, $checkOutDate, $checkInDate, $requestedRooms]
+                );
+            }
+        } elseif (isset($validated['rooms'])) {
+            $query->where('hotels.room_quantity', '>=', $requestedRooms);
         }
 
         // Sorting & Popular Hotels

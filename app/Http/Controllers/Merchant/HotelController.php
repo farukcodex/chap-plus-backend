@@ -44,6 +44,7 @@ class HotelController extends Controller
             'description' => 'nullable|string',
             'price_per_night' => 'required|numeric|min:0',
             'room_quantity' => 'required|integer|min:1',
+            'max_guests' => 'nullable|integer|min:1|max:50',
             'facilities' => 'nullable|array',
             'facilities.*' => 'string',
             'is_active' => 'boolean',
@@ -71,6 +72,7 @@ class HotelController extends Controller
                 'description' => $validated['description'] ?? null,
                 'price_per_night' => $validated['price_per_night'],
                 'room_quantity' => $validated['room_quantity'],
+                'max_guests' => $validated['max_guests'] ?? 2,
                 'facilities' => $validated['facilities'] ?? [],
                 'lat' => $lat,
                 'lon' => $lon,
@@ -131,6 +133,7 @@ class HotelController extends Controller
             'description' => 'nullable|string',
             'price_per_night' => 'required|numeric|min:0',
             'room_quantity' => 'required|integer|min:0',
+            'max_guests' => 'nullable|integer|min:1|max:50',
             'facilities' => 'nullable|array',
             'facilities.*' => 'string',
             'is_active' => 'boolean',
@@ -151,6 +154,10 @@ class HotelController extends Controller
                 'facilities' => $validated['facilities'] ?? $hotel->facilities,
                 'is_active' => $validated['is_active'] ?? $hotel->is_active,
             ];
+
+            if ($request->has('max_guests')) {
+                $updateData['max_guests'] = $request->input('max_guests');
+            }
 
             if ($request->has('address')) {
                 $updateData['address'] = $request->input('address');
