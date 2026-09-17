@@ -22,43 +22,78 @@ class CartController extends Controller
             'user_id' => $request->user()->id,
             'type' => 'ecommerce'
         ]);
-        
-        $cart->load(['items.product.merchantProfile', 'items.variant']);
 
-        // Calculate totals dynamically
-        $subTotal = 0;
-        $deliveryCharge = 0;
-        
+        $cart->load(['items.product.images', 'items.product.merchantProfile', 'items.variant']);
+
         // Fallback to the user's local currency if the cart is empty
         $currency = $request->user()->userProfile->currency ?? 'USD';
 
+        $totalSubTotal = 0;
+        $totalDeliveryCharge = 0;
+        $stores = [];
+
         if ($cart->items->isNotEmpty()) {
-            $merchantProfile = $cart->items->first()->product->merchantProfile;
-            // Override with merchant's currency if available
-            $currency = $merchantProfile->currency ?? $currency;
-            
-            // Get country delivery fee
-            $countryFee = \App\Models\CountryDeliveryFee::where('country', $merchantProfile->country)->first();
-            $deliveryCharge = $countryFee ? (float) $countryFee->fee_amount : 5.00;
-        }
+            $countryFees = \App\Models\CountryDeliveryFee::all()->keyBy(fn ($f) => strtoupper($f->country));
 
-        foreach ($cart->items as $item) {
-            $price = $item->product->base_price;
-            if ($item->variant && $item->variant->price_adjustment) {
-                $price += $item->variant->price_adjustment;
+            // Group items by merchant_profile_id
+            $grouped = $cart->items->groupBy(function ($item) {
+                return $item->product?->merchant_profile_id ?? 0;
+            });
+
+            foreach ($grouped as $merchantId => $items) {
+                $merchantProfile = $items->first()->product?->merchantProfile;
+                $merchantCountry = strtoupper((string) ($merchantProfile?->country ?? ''));
+                $feeRecord = $countryFees->get($merchantCountry);
+                $storeDeliveryFee = $feeRecord ? (float) $feeRecord->fee_amount : 5.00;
+
+                if ($merchantProfile && !empty($merchantProfile->currency)) {
+                    $currency = $merchantProfile->currency;
+                }
+
+                $storeSubTotal = 0;
+                foreach ($items as $item) {
+                    $price = (float) ($item->product?->base_price ?? 0);
+                    if ($item->variant && $item->variant->price_adjustment) {
+                        $price += (float) $item->variant->price_adjustment;
+                    }
+                    $storeSubTotal += ($price * (float) $item->quantity);
+                }
+
+                $storeSubTotal = round($storeSubTotal, 2);
+                $storeTotal = round($storeSubTotal + $storeDeliveryFee, 2);
+
+                $totalSubTotal += $storeSubTotal;
+                $totalDeliveryCharge += $storeDeliveryFee;
+
+                $stores[] = [
+                    'merchant_id'    => $merchantId ? (int) $merchantId : null,
+                    'merchant_name'  => (string) ($merchantProfile?->business_name ?? 'ChapPlus Store'),
+                    'merchant_image' => $merchantProfile?->profile_image_url,
+                    'currency'       => (string) ($merchantProfile?->currency ?? $currency),
+                    'country'        => $merchantProfile?->country,
+                    'items_count'    => $items->count(),
+                    'sub_total'      => $storeSubTotal,
+                    'delivery_fee'   => round($storeDeliveryFee, 2),
+                    'total_cost'     => $storeTotal,
+                    'items'          => $items->values(),
+                ];
             }
-            $subTotal += ($price * $item->quantity);
         }
 
-        $totalCost = $subTotal + $deliveryCharge;
+        $totalSubTotal = round($totalSubTotal, 2);
+        $totalDeliveryCharge = round($totalDeliveryCharge, 2);
+        $totalCost = round($totalSubTotal + $totalDeliveryCharge, 2);
 
         return $this->apiSuccess('Cart retrieved', [
-            'cart' => $cart,
+            'cart_id' => $cart->id,
+            'stores'  => $stores,
             'summary' => [
-                'sub_total' => round($subTotal, 2),
-                'delivery_charge' => round($deliveryCharge, 2),
-                'total_cost' => round($totalCost, 2),
-                'currency' => $currency
+                'stores_count'    => count($stores),
+                'items_count'     => $cart->items->count(),
+                'sub_total'       => $totalSubTotal,
+                'delivery_charge' => $totalDeliveryCharge,
+                'total_cost'      => $totalCost,
+                'currency'        => $currency,
             ]
         ]);
     }
@@ -68,7 +103,7 @@ class CartController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'product_variant_id' => 'nullable|exists:product_variants,id',
-            'quantity' => 'required|integer|min:1'
+            'quantity' => 'nullable|integer|min:1'
         ]);
 
         $product = Product::with('merchantProfile.user.roles')->findOrFail($validated['product_id']);
@@ -86,6 +121,8 @@ class CartController extends Controller
             'type' => 'ecommerce'
         ]);
 
+        $quantity = (int) ($validated['quantity'] ?? 1);
+
         // Check if item already in cart
         $cartItem = CartItem::where('cart_id', $cart->id)
             ->where('product_id', $validated['product_id'])
@@ -93,14 +130,14 @@ class CartController extends Controller
             ->first();
 
         if ($cartItem) {
-            $cartItem->quantity += $validated['quantity'];
+            $cartItem->quantity += $quantity;
             $cartItem->save();
         } else {
             $cartItem = CartItem::create([
                 'cart_id' => $cart->id,
                 'product_id' => $validated['product_id'],
                 'product_variant_id' => $validated['product_variant_id'] ?? null,
-                'quantity' => $validated['quantity']
+                'quantity' => $quantity
             ]);
         }
 

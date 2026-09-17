@@ -30,7 +30,9 @@ class EcommerceOrderController extends Controller
             $query->whereIn('status', ['cancelled']);
         }
 
-        $orders = $query->latest()->paginate(10);
+        $perPage = (int) $request->input('per_page', 10);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+        $orders = $query->latest()->paginate($perPage, ['*'], 'page', $page);
         $orders->through(fn($order) => (new EcommerceOrderResource($order))->toArray($request));
 
         return $this->apiSuccess('Orders retrieved successfully', ['orders' => $orders]);
@@ -52,6 +54,17 @@ class EcommerceOrderController extends Controller
 
         if (in_array($order->status, ['picked_up', 'on_the_way'])) {
             $orderData['live_location'] = Cache::get('order_' . $order->id . '_location');
+        }
+
+        if (!empty($order->order_batch_id)) {
+            $siblingOrders = Order::ecommerce()
+                ->with('merchantProfile:id,business_name,profile_image_path')
+                ->where('order_batch_id', $order->order_batch_id)
+                ->where('id', '!=', $order->id)
+                ->get(['id', 'order_number', 'merchant_profile_id', 'status', 'total_amount', 'delivery_fee']);
+            $orderData['batch_orders'] = $siblingOrders;
+        } else {
+            $orderData['batch_orders'] = [];
         }
 
         return $this->apiSuccess('Order details retrieved', ['order' => $orderData]);

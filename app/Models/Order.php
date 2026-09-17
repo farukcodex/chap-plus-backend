@@ -9,7 +9,7 @@ class Order extends Model
 {
     use HasFactory;
     protected $fillable = [
-        'order_number', 'user_id', 'merchant_profile_id', 'type', 'total_amount', 'delivery_fee', 
+        'order_number', 'order_batch_id', 'user_id', 'merchant_profile_id', 'type', 'total_amount', 'delivery_fee', 
         'merchant_commission_rate', 'admin_commission', 'merchant_earnings',
         'rider_commission_rate', 'rider_earnings', 'commission_settled_at',
         'status', 'user_address_id', 'payment_method', 
@@ -75,5 +75,10 @@ class Order extends Model
     public function rider()
     {
         return $this->belongsTo(User::class, 'rider_id');
+    }
+
+    public function batchOrders()
+    {
+        return $this->hasMany(Order::class, 'order_batch_id', 'order_batch_id');
     }
 }

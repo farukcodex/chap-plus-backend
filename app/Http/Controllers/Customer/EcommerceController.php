@@ -104,6 +104,7 @@ class EcommerceController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        
         $userCountry = $request->user()?->userProfile?->country ?? null;
 
         $query = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
@@ -230,7 +231,10 @@ class EcommerceController extends Controller
             }
         }
 
-        $products = $query->paginate(20);
+        $perPage = (int) $request->input('per_page', 20);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+
+        $products = $query->paginate($perPage, ['*'], 'page', $page);
 
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? \App\Models\Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
@@ -339,7 +343,10 @@ class EcommerceController extends Controller
             $query->select('merchant_profiles.*');
         }
 
-        $stores = $query->paginate(20);
+        $perPage = (int) $request->input('per_page', 20);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+
+        $stores = $query->paginate($perPage, ['*'], 'page', $page);
 
         return $this->apiSuccess('Stores retrieved', ['stores' => $stores]);
     }
@@ -395,8 +402,32 @@ class EcommerceController extends Controller
             return (new EcommerceProductResource($product))->toArray($request);
         });
 
+        // Fetch categories available in this store
+        $storeProductCategoryIds = Product::where('merchant_profile_id', $store->id)
+            ->where('is_active', true)
+            ->pluck('category_id')
+            ->filter()
+            ->unique()
+            ->toArray();
+
+        $directCategories = ProductCategory::whereIn('id', $storeProductCategoryIds)->get();
+        $parentIds = $directCategories->pluck('parent_id')->filter()->unique()->toArray();
+        $allRootIds = array_unique(array_merge(
+            $directCategories->whereNull('parent_id')->pluck('id')->toArray(),
+            $parentIds
+        ));
+
+        $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+            ->whereIn('id', $allRootIds)
+            ->with(['subcategories' => function ($q) use ($storeProductCategoryIds) {
+                $q->select('id', 'name', 'slug', 'parent_id', 'type')
+                  ->whereIn('id', $storeProductCategoryIds);
+            }])
+            ->get();
+
         return $this->apiSuccess('Store details retrieved', [
             'store' => $store,
+            'categories' => $categories,
             'highly_recommended' => $transformedRecommended
         ]);
     }

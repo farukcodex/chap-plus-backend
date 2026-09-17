@@ -30,7 +30,9 @@ class RestaurantOrderController extends Controller
             $query->whereIn('status', ['cancelled']);
         }
 
-        $orders = $query->latest()->paginate(10);
+        $perPage = (int) $request->input('per_page', 10);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+        $orders = $query->latest()->paginate($perPage, ['*'], 'page', $page);
         $orders->through(fn($order) => (new RestaurantOrderResource($order))->toArray($request));
 
         return $this->apiSuccess('Restaurant orders retrieved successfully', ['orders' => $orders]);

@@ -25,6 +25,7 @@ class EcommerceOrderResource extends JsonResource
         $data = [
             'id'              => (int) $this->id,
             'order_number'    => (string) $this->order_number,
+            'order_batch_id'  => $this->order_batch_id ? (string) $this->order_batch_id : null,
             'type'            => 'ecommerce',
             'status'          => (string) $this->status,
             'payment_method'  => (string) $this->payment_method,

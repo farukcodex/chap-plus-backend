@@ -62,7 +62,7 @@ class RestaurantCartController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'product_variant_id' => 'nullable|exists:product_variants,id',
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'nullable|integer|min:1',
             'clear_existing' => 'nullable|boolean',
         ]);
 
@@ -95,20 +95,22 @@ class RestaurantCartController extends Controller
             }
         }
 
+        $quantity = (int) ($validated['quantity'] ?? 1);
+
         $cartItem = CartItem::where('cart_id', $cart->id)
             ->where('product_id', $validated['product_id'])
             ->where('product_variant_id', $validated['product_variant_id'] ?? null)
             ->first();
 
         if ($cartItem) {
-            $cartItem->quantity += $validated['quantity'];
+            $cartItem->quantity += $quantity;
             $cartItem->save();
         } else {
             CartItem::create([
                 'cart_id' => $cart->id,
                 'product_id' => $validated['product_id'],
                 'product_variant_id' => $validated['product_variant_id'] ?? null,
-                'quantity' => $validated['quantity']
+                'quantity' => $quantity
             ]);
         }
 

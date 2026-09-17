@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 
 use App\Http\Resources\Customer\EcommerceOrderResource;
 use App\Models\Cart;
+use App\Models\CountryDeliveryFee;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Notifications\Customer\BusBookingConfirmedNotification;
@@ -20,6 +21,7 @@ use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class CheckoutController extends Controller
 {
@@ -38,7 +40,7 @@ class CheckoutController extends Controller
     {
         $validated = $request->validate([
             'user_address_id' => 'required|exists:user_addresses,id',
-            'phone_number' => 'required|string', // Safaricom number for M-Pesa
+            'phone_number'    => 'required|string', // Safaricom number for M-Pesa
         ]);
 
         $user = $request->user();
@@ -59,58 +61,72 @@ class CheckoutController extends Controller
         try {
             DB::beginTransaction();
 
-            $total = 0;
-            // Assuming for this prototype that all cart items belong to the same merchant.
-            // We just grab the first item's merchant profile ID and country.
-            $merchantProfile = $cart->items->first()->product->merchantProfile;
-            $merchantId = $merchantProfile->id;
-            
-            // Determine delivery fee based on merchant's country
-            $countryFee = \App\Models\CountryDeliveryFee::where('country', $merchantProfile->country)->first();
-            $deliveryFee = $countryFee ? $countryFee->fee_amount : 5.00; // fallback to 5.00 if country not found
+            $orderBatchId = 'BATCH-' . strtoupper(Str::random(10));
+            $createdOrders = [];
+            $grandTotal = 0;
 
-            foreach ($cart->items as $item) {
-                $price = $item->product->base_price;
-                if ($item->variant && $item->variant->price_adjustment) {
-                    $price += $item->variant->price_adjustment;
-                }
-                $total += ($price * $item->quantity);
-            }
+            // Group cart items by merchant_profile_id
+            $grouped = $cart->items->groupBy(function ($item) {
+                return $item->product?->merchant_profile_id ?? 0;
+            });
 
-            $distanceData = $this->distanceService->calculate(
-                $merchantProfile->latitude ? (float) $merchantProfile->latitude : null,
-                $merchantProfile->longitude ? (float) $merchantProfile->longitude : null,
-                $userAddress->latitude ? (float) $userAddress->latitude : null,
-                $userAddress->longitude ? (float) $userAddress->longitude : null
-            );
+            // Cache country delivery fees
+            $countryFees = CountryDeliveryFee::all()->keyBy(fn ($f) => strtoupper($f->country));
 
-            $order = Order::create([
-                'user_id' => $user->id,
-                'merchant_profile_id' => $merchantId,
-                'type' => 'ecommerce',
-                'total_amount' => $total,
-                'delivery_fee' => $deliveryFee,
-                'user_address_id' => $userAddress->id,
-                'payment_method' => 'mpesa',
-                'status' => 'pending_payment',
-                'delivery_otp' => (string) random_int(1000, 9999),
-                'distance_km' => $distanceData['distance_km'] ?? null,
-                'duration_minute' => $distanceData['duration_minute'] ?? null,
-            ]);
+            foreach ($grouped as $merchantId => $items) {
+                $merchantProfile = $items->first()->product?->merchantProfile;
+                $merchantCountry = strtoupper((string) ($merchantProfile?->country ?? ''));
+                $countryFee = $countryFees->get($merchantCountry);
+                $deliveryFee = $countryFee ? (float) $countryFee->fee_amount : 5.00;
 
-            foreach ($cart->items as $item) {
-                $price = $item->product->base_price;
-                if ($item->variant && $item->variant->price_adjustment) {
-                    $price += $item->variant->price_adjustment;
+                $storeSubtotal = 0;
+                foreach ($items as $item) {
+                    $price = (float) ($item->product?->base_price ?? 0);
+                    if ($item->variant && $item->variant->price_adjustment) {
+                        $price += (float) $item->variant->price_adjustment;
+                    }
+                    $storeSubtotal += ($price * (float) $item->quantity);
                 }
 
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'product_id' => $item->product_id,
-                    'product_variant_id' => $item->product_variant_id,
-                    'quantity' => $item->quantity,
-                    'price_at_time_of_purchase' => $price,
+                $distanceData = $this->distanceService->calculate(
+                    $merchantProfile?->latitude ? (float) $merchantProfile->latitude : null,
+                    $merchantProfile?->longitude ? (float) $merchantProfile->longitude : null,
+                    $userAddress->latitude ? (float) $userAddress->latitude : null,
+                    $userAddress->longitude ? (float) $userAddress->longitude : null
+                );
+
+                $order = Order::create([
+                    'user_id'             => $user->id,
+                    'merchant_profile_id' => $merchantId ?: null,
+                    'order_batch_id'      => $orderBatchId,
+                    'type'                => 'ecommerce',
+                    'total_amount'        => $storeSubtotal,
+                    'delivery_fee'        => $deliveryFee,
+                    'user_address_id'     => $userAddress->id,
+                    'payment_method'      => 'mpesa',
+                    'status'              => 'pending_payment',
+                    'delivery_otp'        => (string) random_int(1000, 9999),
+                    'distance_km'         => $distanceData['distance_km'] ?? null,
+                    'duration_minute'     => $distanceData['duration_minute'] ?? null,
                 ]);
+
+                foreach ($items as $item) {
+                    $price = (float) ($item->product?->base_price ?? 0);
+                    if ($item->variant && $item->variant->price_adjustment) {
+                        $price += (float) $item->variant->price_adjustment;
+                    }
+
+                    OrderItem::create([
+                        'order_id'                  => $order->id,
+                        'product_id'                => $item->product_id,
+                        'product_variant_id'        => $item->product_variant_id,
+                        'quantity'                  => $item->quantity,
+                        'price_at_time_of_purchase' => $price,
+                    ]);
+                }
+
+                $grandTotal += ($storeSubtotal + $deliveryFee);
+                $createdOrders[] = $order;
             }
 
             // Clear the cart
@@ -118,27 +134,41 @@ class CheckoutController extends Controller
 
             DB::commit();
 
-            // Total amount to charge via Mpesa
-            $grandTotal = $total + $deliveryFee;
+            // Total amount to charge via M-Pesa
+            $grandTotal = round($grandTotal, 2);
 
-            // Initiate M-Pesa STK Push
+            // Account Reference: Safaricom limits to max 12 characters alphanumeric
+            $accountRef = count($createdOrders) === 1
+                ? 'ORD-' . $createdOrders[0]->id
+                : substr(str_replace('-', '', $orderBatchId), 0, 12);
+
+            // Initiate single M-Pesa STK Push for grand total
             $mpesaResponse = $this->mpesaService->initiateStkPush(
                 $validated['phone_number'],
                 $grandTotal,
-                'ORD-' . $order->id,
+                $accountRef,
                 'ChapPlus Order'
             );
 
-            // Save the CheckoutRequestID to verify later in the webhook
-            $order->update([
-                'mpesa_checkout_request_id' => $mpesaResponse['CheckoutRequestID']
-            ]);
+            // Save the CheckoutRequestID to all orders in this batch
+            $checkoutRequestId = $mpesaResponse['CheckoutRequestID'] ?? null;
+            if ($checkoutRequestId) {
+                $orderIds = collect($createdOrders)->pluck('id');
+                Order::whereIn('id', $orderIds)->update([
+                    'mpesa_checkout_request_id' => $checkoutRequestId
+                ]);
+            }
 
-            $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+            // Load relations for response
+            foreach ($createdOrders as $order) {
+                $order->load(['merchantProfile', 'address', 'items.product.images', 'items.variant']);
+            }
 
             return $this->apiSuccess('Order placed! Please enter your M-Pesa PIN on your phone to complete payment.', [
-                'order_id' => $order->id,
-                'order' => new EcommerceOrderResource($order),
+                'batch_id'       => $orderBatchId,
+                'orders_count'   => count($createdOrders),
+                'orders'         => EcommerceOrderResource::collection(collect($createdOrders)),
+                'grand_total'    => $grandTotal,
                 'mpesa_response' => $mpesaResponse
             ]);
 
@@ -161,32 +191,52 @@ class CheckoutController extends Controller
             return $this->apiError('Order not found', 404);
         }
 
-        if ($order->status === 'paid') {
+        if (!empty($order->order_batch_id)) {
+            $orders = Order::where('user_id', $request->user()->id)
+                ->where('order_batch_id', $order->order_batch_id)
+                ->where('status', '!=', 'paid')
+                ->get();
+        } else {
+            $orders = collect([$order]);
+        }
+
+        if ($orders->isEmpty() || $order->status === 'paid') {
             return $this->apiError('This order is already paid.', 400);
         }
 
         try {
-            $order->update([
-                'status' => 'pending_payment' // reset status
-            ]);
+            $grandTotal = 0;
+            foreach ($orders as $o) {
+                $o->update(['status' => 'pending_payment']);
+                $grandTotal += ((float) $o->total_amount + (float) $o->delivery_fee);
+            }
+            $grandTotal = round($grandTotal, 2);
 
-            $grandTotal = $order->total_amount + $order->delivery_fee;
+            $accountRef = $orders->count() === 1
+                ? 'ORD-' . $orders[0]->id
+                : ($orders[0]->order_batch_id ? substr(str_replace('-', '', $orders[0]->order_batch_id), 0, 12) : 'ORD-' . $orders[0]->id);
 
             // Initiate M-Pesa STK Push
             $mpesaResponse = $this->mpesaService->initiateStkPush(
                 $validated['phone_number'],
                 $grandTotal,
-                'ORD-' . $order->id,
+                $accountRef,
                 'ChapPlus Retry'
             );
 
-            // Update the request ID so the webhook can find it
-            $order->update([
-                'mpesa_checkout_request_id' => $mpesaResponse['CheckoutRequestID']
-            ]);
+            // Update the request ID so the webhook can find all batch orders
+            $checkoutRequestId = $mpesaResponse['CheckoutRequestID'] ?? null;
+            if ($checkoutRequestId) {
+                Order::whereIn('id', $orders->pluck('id'))->update([
+                    'mpesa_checkout_request_id' => $checkoutRequestId
+                ]);
+            }
 
             return $this->apiSuccess('Payment retry initiated! Please check your phone.', [
-                'order_id' => $order->id,
+                'order_id'       => $order->id,
+                'batch_id'       => $order->order_batch_id,
+                'orders_count'   => $orders->count(),
+                'grand_total'    => $grandTotal,
                 'mpesa_response' => $mpesaResponse
             ]);
 
@@ -217,9 +267,9 @@ class CheckoutController extends Controller
             sleep(2);
         }
 
-        $order = Order::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
+        $orders = Order::with(['merchantProfile.user', 'user'])->where('mpesa_checkout_request_id', $checkoutRequestId)->get();
 
-        if (!$order) {
+        if ($orders->isEmpty()) {
             // Check if it's a Hotel Booking
             $booking = \App\Models\HotelBooking::where('mpesa_checkout_request_id', $checkoutRequestId)->first();
             
@@ -346,52 +396,79 @@ class CheckoutController extends Controller
             return response()->json(['ResultCode' => 1, 'ResultDesc' => 'Record not found']);
         }
 
-        // Idempotency check: If the order is already paid, ignore duplicate webhooks
-        if ($order->status === 'paid') {
-            Log::info('M-Pesa Webhook: Ignored duplicate callback for Order #' . $order->id);
+        // Idempotency check: If all orders are already paid, ignore duplicate webhooks
+        if ($orders->every(fn ($o) => $o->status === 'paid')) {
+            Log::info('M-Pesa Webhook: Ignored duplicate callback for Orders with CheckoutRequestID ' . $checkoutRequestId);
             return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         }
 
         if ($resultCode == 0) {
             // Payment Successful
-            $callbackMetadata = $callbackData['CallbackMetadata']['Item'];
+            $callbackMetadata = $callbackData['CallbackMetadata']['Item'] ?? [];
             $receiptNumber = null;
 
             foreach ($callbackMetadata as $item) {
-                if ($item['Name'] === 'MpesaReceiptNumber') {
+                if (($item['Name'] ?? '') === 'MpesaReceiptNumber') {
                     $receiptNumber = $item['Value'];
                     break;
                 }
             }
 
-            $order->update([
-                'status' => 'paid',
-                'mpesa_receipt_number' => $receiptNumber
-            ]);
+            foreach ($orders as $order) {
+                $order->update([
+                    'status' => 'paid',
+                    'mpesa_receipt_number' => $receiptNumber
+                ]);
 
-            // Send multi-channel notification (Push, In-App, Email invoice)
-            $order->user?->notify(new OrderPlacedNotification($order));
+                // Send multi-channel notification to customer (Push, In-App, Email invoice)
+                try {
+                    $order->user?->notify(new OrderPlacedNotification($order));
+                } catch (\Throwable $e) {
+                    Log::error("Failed customer notification for Order #{$order->id}: " . $e->getMessage());
+                }
 
-            // Notify all platform administrators
-            \App\Services\AdminNotificationService::notifyAdmins(
-                new \App\Notifications\Admin\NewOrderPlacedAdminNotification($order)
-            );
+                // Notify merchant user about new incoming order
+                try {
+                    $merchantUser = $order->merchantProfile?->user;
+                    if ($merchantUser) {
+                        $merchantUser->notify(new OrderStatusUpdatedNotification($order, 'paid', 'New paid order received!'));
+                    }
+                } catch (\Throwable $e) {
+                    Log::error("Failed merchant notification for Order #{$order->id}: " . $e->getMessage());
+                }
 
-            Log::info("Order #{$order->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
+                // Notify all platform administrators
+                try {
+                    \App\Services\AdminNotificationService::notifyAdmins(
+                        new \App\Notifications\Admin\NewOrderPlacedAdminNotification($order)
+                    );
+                } catch (\Throwable $e) {
+                    Log::error("Failed admin notification for Order #{$order->id}: " . $e->getMessage());
+                }
+
+                Log::info("Order #{$order->id} paid successfully via M-Pesa. Receipt: {$receiptNumber}");
+            }
         } else {
             // Payment Failed or Cancelled by user
-            $order->update([
-                'status' => 'failed'
-            ]);
+            $resultDesc = $callbackData['ResultDesc'] ?? 'M-Pesa payment was cancelled or failed';
+            foreach ($orders as $order) {
+                $order->update([
+                    'status' => 'failed'
+                ]);
 
-            // Send notification of failed/cancelled order
-            $order->user?->notify(new OrderStatusUpdatedNotification(
-                $order,
-                'cancelled',
-                'M-Pesa payment was cancelled or failed: ' . ($callbackData['ResultDesc'] ?? 'Unknown error')
-            ));
+                // Send notification of failed/cancelled order
+                try {
+                    $order->user?->notify(new OrderStatusUpdatedNotification(
+                        $order,
+                        'cancelled',
+                        'M-Pesa payment was cancelled or failed: ' . $resultDesc
+                    ));
+                } catch (\Throwable $e) {
+                    Log::error("Failed customer cancel notification for Order #{$order->id}: " . $e->getMessage());
+                }
 
-            Log::info("Order #{$order->id} M-Pesa payment failed. Reason: {$callbackData['ResultDesc']}");
+                Log::info("Order #{$order->id} M-Pesa payment failed. Reason: {$resultDesc}");
+            }
         }
 
         return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
@@ -430,11 +507,19 @@ class CheckoutController extends Controller
             if (!$order) {
                 return $this->apiError('Order not found', 404);
             }
-            if (empty($order->mpesa_checkout_request_id)) {
-                $order->update(['mpesa_checkout_request_id' => 'ws_SIM_' . time()]);
+            if (!empty($order->order_batch_id)) {
+                $batchOrders = Order::where('order_batch_id', $order->order_batch_id)->get();
+            } else {
+                $batchOrders = collect([$order]);
             }
-            $checkoutRequestId = $order->mpesa_checkout_request_id;
-            $amount = (float) ($order->total_amount + $order->delivery_fee);
+            if (empty($order->mpesa_checkout_request_id)) {
+                $simReqId = 'ws_SIM_' . time();
+                Order::whereIn('id', $batchOrders->pluck('id'))->update(['mpesa_checkout_request_id' => $simReqId]);
+                $checkoutRequestId = $simReqId;
+            } else {
+                $checkoutRequestId = $order->mpesa_checkout_request_id;
+            }
+            $amount = (float) $batchOrders->sum(fn ($o) => (float) $o->total_amount + (float) $o->delivery_fee);
         }
 
         if (!$checkoutRequestId) {
@@ -490,5 +575,13 @@ class CheckoutController extends Controller
             'amount' => $amount,
             'booking' => $updatedBooking,
         ]);
+    }
+
+    /**
+     * Webhook callback alias
+     */
+    public function handleCallback(Request $request): JsonResponse
+    {
+        return $this->mpesaWebhook($request);
     }
 }

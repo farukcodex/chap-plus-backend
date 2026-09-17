@@ -234,7 +234,8 @@ class RestaurantController extends Controller
             $query->latest('id');
         }
 
-        $restaurants = $query->paginate($perPage);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+        $restaurants = $query->paginate($perPage, ['*'], 'page', $page);
 
         $favoriteRestaurantIds = $user ? FavoriteRestaurant::where('user_id', $user->id)->pluck('merchant_profile_id')->toArray() : [];
 
@@ -440,7 +441,10 @@ class RestaurantController extends Controller
             }
         }
 
-        $foods = $query->paginate(20);
+        $perPage = (int) $request->input('per_page', 20);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+
+        $foods = $query->paginate($perPage, ['*'], 'page', $page);
 
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
