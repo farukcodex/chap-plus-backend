@@ -9,6 +9,7 @@ use App\Models\ProductCategory;
 use App\Models\MerchantProfile;
 use App\Models\ProductReview;
 use App\Models\Favorite;
+use App\Models\FavoriteRestaurant;
 use App\Http\Resources\Customer\RestaurantFoodResource;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
@@ -82,7 +83,12 @@ class RestaurantController extends Controller
             $restaurantsQuery->select('merchant_profiles.*');
         }
 
-        $featuredRestaurants = $restaurantsQuery->take(10)->get();
+        $favoriteRestaurantIds = $user ? FavoriteRestaurant::where('user_id', $user->id)->pluck('merchant_profile_id')->toArray() : [];
+
+        $featuredRestaurants = $restaurantsQuery->take(10)->get()->map(function ($rest) use ($favoriteRestaurantIds) {
+            $rest->is_favorite = in_array($rest->id, $favoriteRestaurantIds);
+            return $rest;
+        });
 
         return $this->apiSuccess('Restaurant home data retrieved', [
             'cuisines' => $cuisines,
@@ -130,6 +136,54 @@ class RestaurantController extends Controller
      */
     public function restaurants(Request $request): JsonResponse
     {
+        // Resolve user coordinates (from query lat/lng/lon or authenticated user profile)
+        $user = Auth::guard('sanctum')->user();
+        $profileLat = $user?->userProfile?->latitude;
+        $profileLon = $user?->userProfile?->longitude;
+
+        $validated = $request->validate([
+            'search'    => 'nullable|string|max:255',
+            'lat'       => 'nullable|numeric|between:-90,90',
+            'lng'       => 'nullable|numeric|between:-180,180',
+            'lon'       => 'nullable|numeric|between:-180,180',
+            'radius'    => 'nullable|numeric|min:0',
+            'sort_by'   => [
+                'nullable',
+                'string',
+                'in:popular,top_rated,near,nearby,latest',
+                function ($attribute, $value, $fail) use ($request, $profileLat, $profileLon) {
+                    if (in_array($value, ['near', 'nearby'], true)) {
+                        $hasQueryCoords = $request->filled('lat') && ($request->filled('lng') || $request->filled('lon'));
+                        $hasProfileCoords = $profileLat !== null && $profileLon !== null;
+                        if (!$hasQueryCoords && !$hasProfileCoords) {
+                            $fail('Latitude and longitude (lat, lng/lon) are required when sorting by near.');
+                        }
+                    }
+                }
+            ],
+            'popular'   => ['nullable', function ($attribute, $value, $fail) {
+                if (!is_bool($value) && !in_array(strtolower((string) $value), ['true', 'false', '1', '0', 'yes', 'no'], true)) {
+                    $fail('The popular field must be true or false.');
+                }
+            }],
+            'per_page'  => 'nullable|integer|min:1|max:100',
+            'page'      => 'nullable|integer|min:1',
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 20);
+        $sortBy = $validated['sort_by'] ?? null;
+        $isNear = in_array($sortBy, ['near', 'nearby'], true);
+        $isPopular = $request->boolean('popular') || $sortBy === 'popular' || $sortBy === 'top_rated';
+
+        // Resolve coordinates
+        $targetLat = isset($validated['lat']) 
+            ? (float) $validated['lat'] 
+            : ($profileLat !== null ? (float) $profileLat : null);
+            
+        $targetLon = isset($validated['lng']) 
+            ? (float) $validated['lng'] 
+            : (isset($validated['lon']) ? (float) $validated['lon'] : ($profileLon !== null ? (float) $profileLon : null));
+
         $query = MerchantProfile::withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->whereHas('user.roles', function ($q) {
@@ -137,23 +191,57 @@ class RestaurantController extends Controller
             });
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = trim($request->input('search'));
             $query->where(function ($q) use ($search) {
                 $q->where('business_name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                  ->orWhere('description', 'LIKE', "%{$search}%")
+                  ->orWhere('city', 'LIKE', "%{$search}%")
+                  ->orWhere('address', 'LIKE', "%{$search}%");
             });
         }
 
-        if ($request->filled('lat') && $request->filled('lng')) {
-            $lat = $request->lat;
-            $lng = $request->lng;
-            $query->selectRaw("merchant_profiles.*, ( 6371 * acos( cos( radians(?) ) * cos( radians( latitude ) ) * cos( radians( longitude ) - radians(?) ) + sin( radians(?) ) * sin( radians( latitude ) ) ) ) AS distance_km", [$lat, $lng, $lat])
-                  ->orderBy('distance_km');
-        } else {
-            $query->select('merchant_profiles.*');
+        if ($targetLat !== null && $targetLon !== null) {
+            $query->selectRaw(
+                "merchant_profiles.*, (6371 * acos(
+                    LEAST(1.0, GREATEST(-1.0, 
+                        cos(radians(?)) * cos(radians(latitude)) 
+                        * cos(radians(longitude) - radians(?)) 
+                        + sin(radians(?)) * sin(radians(latitude))
+                    ))
+                )) AS distance_km",
+                [$targetLat, $targetLon, $targetLat]
+            );
+
+            if (isset($validated['radius'])) {
+                $query->having('distance_km', '<=', (float) $validated['radius']);
+            }
         }
 
-        $restaurants = $query->paginate(20);
+        if ($isNear && $targetLat !== null && $targetLon !== null) {
+            $query->orderByRaw('latitude IS NULL OR longitude IS NULL ASC')
+                  ->orderBy('distance_km', 'asc')
+                  ->latest('id');
+        } elseif ($isPopular) {
+            $query->orderByRaw('COALESCE(reviews_avg_rating, 0) DESC')
+                  ->orderByDesc('reviews_count')
+                  ->latest('id');
+        } elseif ($targetLat !== null && $targetLon !== null && !$request->filled('sort_by')) {
+            // Default when coordinates are provided without sort_by: order by distance
+            $query->orderByRaw('latitude IS NULL OR longitude IS NULL ASC')
+                  ->orderBy('distance_km', 'asc')
+                  ->latest('id');
+        } else {
+            $query->latest('id');
+        }
+
+        $restaurants = $query->paginate($perPage);
+
+        $favoriteRestaurantIds = $user ? FavoriteRestaurant::where('user_id', $user->id)->pluck('merchant_profile_id')->toArray() : [];
+
+        $restaurants->getCollection()->transform(function ($item) use ($favoriteRestaurantIds) {
+            $item->is_favorite = in_array($item->id, $favoriteRestaurantIds);
+            return $item;
+        });
 
         return $this->apiSuccess('Restaurants retrieved', ['restaurants' => $restaurants]);
     }
@@ -163,18 +251,35 @@ class RestaurantController extends Controller
      */
     public function restaurantDetails(Request $request, string $id): JsonResponse
     {
+        $user = Auth::guard('sanctum')->user();
+        $profileLat = $user?->userProfile?->latitude;
+        $profileLon = $user?->userProfile?->longitude;
+
+        $targetLat = $request->filled('lat') 
+            ? (float) $request->lat 
+            : ($profileLat !== null ? (float) $profileLat : null);
+
+        $targetLon = $request->filled('lng') 
+            ? (float) $request->lng 
+            : ($request->filled('lon') ? (float) $request->lon : ($profileLon !== null ? (float) $profileLon : null));
+
         $query = MerchantProfile::withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->whereHas('user.roles', function ($q) {
                 $q->where('name', 'RESTAURANT_MERCHANT');
             });
 
-        if ($request->has('lat') && $request->has('lng')) {
-            $lat = $request->lat;
-            $lng = $request->lng;
-            $query->selectRaw("merchant_profiles.*, ( 6371 * acos( cos( radians(?) ) * cos( radians( latitude ) ) * cos( radians( longitude ) - radians(?) ) + sin( radians(?) ) * sin( radians( latitude ) ) ) ) AS distance_km", [$lat, $lng, $lat]);
-        } else {
-            $query->select('merchant_profiles.*');
+        if ($targetLat !== null && $targetLon !== null) {
+            $query->selectRaw(
+                "merchant_profiles.*, (6371 * acos(
+                    LEAST(1.0, GREATEST(-1.0, 
+                        cos(radians(?)) * cos(radians(latitude)) 
+                        * cos(radians(longitude) - radians(?)) 
+                        + sin(radians(?)) * sin(radians(latitude))
+                    ))
+                )) AS distance_km",
+                [$targetLat, $targetLon, $targetLat]
+            );
         }
 
         $restaurant = $query->find($id);
@@ -182,6 +287,10 @@ class RestaurantController extends Controller
         if (!$restaurant) {
             return $this->apiError('Restaurant not found', 404);
         }
+
+        $restaurant->is_favorite = $user 
+            ? FavoriteRestaurant::where('user_id', $user->id)->where('merchant_profile_id', $restaurant->id)->exists() 
+            : false;
 
         // Fetch highly recommended / top-rated foods
         $highlyRecommended = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])

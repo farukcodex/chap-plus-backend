@@ -30,6 +30,12 @@ class MerchantProfile extends Model
     protected $appends = ['profile_image_url', 'cover_image_url'];
     protected $hidden = ['profile_image_path', 'cover_image_path'];
 
+    protected $casts = [
+        'latitude' => 'float',
+        'longitude' => 'float',
+        'distance_km' => 'float',
+    ];
+
     /**
      * Check if the merchant is approved.
      */
@@ -49,6 +55,11 @@ class MerchantProfile extends Model
     public function reviews()
     {
         return $this->hasMany(MerchantReview::class);
+    }
+
+    public function favoriteRestaurants()
+    {
+        return $this->hasMany(FavoriteRestaurant::class);
     }
 
     public function hotels()

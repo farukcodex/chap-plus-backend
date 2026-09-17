@@ -160,7 +160,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('favorites')->group(function () {
             Route::get('/', [\App\Http\Controllers\Customer\FavoriteController::class, 'index']);
             Route::post('/{id}', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggle']);
+            Route::get('/restaurants', [\App\Http\Controllers\Customer\FavoriteController::class, 'favoriteRestaurants']);
+            Route::post('/restaurants/{id}', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggleRestaurant']);
         });
+
+        Route::post('/restaurants/{id}/favorite', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggleRestaurant']);
 
         Route::prefix('cart')->group(function () {
             Route::get('/', [\App\Http\Controllers\Customer\RestaurantCartController::class, 'getCart']);

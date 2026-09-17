@@ -92,4 +92,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(PayoutRequest::class);
     }
+
+    public function favoriteRestaurants()
+    {
+        return $this->hasMany(FavoriteRestaurant::class);
+    }
 }

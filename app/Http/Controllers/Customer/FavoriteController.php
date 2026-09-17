@@ -77,4 +77,88 @@ class FavoriteController extends Controller
 
         return $this->apiSuccess('Added to favorites', ['is_favorite' => true]);
     }
+
+    /**
+     * List favorite restaurants for the authenticated user.
+     */
+    public function favoriteRestaurants(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $profileLat = $user?->userProfile?->latitude;
+        $profileLon = $user?->userProfile?->longitude;
+
+        $targetLat = $request->filled('lat') 
+            ? (float) $request->lat 
+            : ($profileLat !== null ? (float) $profileLat : null);
+
+        $targetLon = $request->filled('lng') 
+            ? (float) $request->lng 
+            : ($request->filled('lon') ? (float) $request->lon : ($profileLon !== null ? (float) $profileLon : null));
+
+        $query = \App\Models\MerchantProfile::withAvg('reviews', 'rating')
+            ->withCount('reviews')
+            ->whereHas('favoriteRestaurants', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+
+        if ($targetLat !== null && $targetLon !== null) {
+            $query->selectRaw(
+                "merchant_profiles.*, (6371 * acos(
+                    LEAST(1.0, GREATEST(-1.0, 
+                        cos(radians(?)) * cos(radians(latitude)) 
+                        * cos(radians(longitude) - radians(?)) 
+                        + sin(radians(?)) * sin(radians(latitude))
+                    ))
+                )) AS distance_km",
+                [$targetLat, $targetLon, $targetLat]
+            )->orderBy('distance_km', 'asc');
+        } else {
+            $query->latest('id');
+        }
+
+        $perPage = (int) $request->input('per_page', 20);
+        $restaurants = $query->paginate($perPage);
+
+        // Append is_favorite = true to each record
+        $restaurants->getCollection()->transform(function ($item) {
+            $item->is_favorite = true;
+            return $item;
+        });
+
+        return $this->apiSuccess('Favorite restaurants retrieved successfully', [
+            'restaurants' => $restaurants
+        ]);
+    }
+
+    /**
+     * Toggle favorite status for a restaurant.
+     */
+    public function toggleRestaurant(Request $request, int $restaurantId): JsonResponse
+    {
+        $restaurant = \App\Models\MerchantProfile::whereHas('user.roles', function ($q) {
+            $q->where('name', 'RESTAURANT_MERCHANT');
+        })->find($restaurantId);
+
+        if (!$restaurant) {
+            return $this->apiError('Restaurant not found', 404, ['code' => 'RESTAURANT_NOT_FOUND']);
+        }
+
+        $userId = $request->user()->id;
+
+        $favorite = \App\Models\FavoriteRestaurant::where('user_id', $userId)
+            ->where('merchant_profile_id', $restaurantId)
+            ->first();
+
+        if ($favorite) {
+            $favorite->delete();
+            return $this->apiSuccess('Removed restaurant from favorites', ['is_favorite' => false]);
+        }
+
+        \App\Models\FavoriteRestaurant::create([
+            'user_id' => $userId,
+            'merchant_profile_id' => $restaurantId,
+        ]);
+
+        return $this->apiSuccess('Added restaurant to favorites', ['is_favorite' => true]);
+    }
 }
