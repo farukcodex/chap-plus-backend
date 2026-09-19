@@ -41,7 +41,6 @@ class AnalyticsController extends Controller
      */
     public function overview(): JsonResponse
     {
-        $commissionRate = (float) (PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 11.00);
         $currency = (string) (PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
 
         // 1. Total Platform Lifetime Earnings
@@ -81,7 +80,6 @@ class AnalyticsController extends Controller
     public function revenue(Request $request): JsonResponse
     {
         $year = (int) $request->input('year', date('Y'));
-        $commissionRate = (float) (PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 11.00);
         $currency = (string) (PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
 
         // 1. Orders revenue by month

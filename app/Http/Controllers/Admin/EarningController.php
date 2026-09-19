@@ -22,7 +22,7 @@ class EarningController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $commissionRate = (float) (PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 11.00);
+        $commissionRate = (float) PlatformSetting::getCommissionRate('ecommerce');
         $currency = (string) (PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
 
         // 1. Calculate top summary metric cards
@@ -59,7 +59,7 @@ class EarningController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
-        $commissionRate = (float) (PlatformSetting::where('key', 'merchant_commission_percent')->value('value') ?? 11.00);
+        $commissionRate = (float) PlatformSetting::getCommissionRate('ecommerce');
         $currency = (string) (PlatformSetting::where('key', 'currency')->value('value') ?? 'KES');
 
         $records = $this->fetchEarningsRecords($request, $commissionRate, $currency);

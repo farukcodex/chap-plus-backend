@@ -39,7 +39,6 @@ class CommissionController extends Controller
             'bus'        => 'bus_commission_percent',
             'hotel'      => 'hotel_commission_percent',
             'rider'      => 'rider_commission_percent',
-            'merchant'   => 'merchant_commission_percent',
         ];
 
         foreach ($input as $key => $val) {
@@ -53,7 +52,6 @@ class CommissionController extends Controller
             'bus_commission_percent'        => 'nullable|numeric|min:0|max:100',
             'hotel_commission_percent'      => 'nullable|numeric|min:0|max:100',
             'rider_commission_percent'      => 'nullable|numeric|min:0|max:100',
-            'merchant_commission_percent'   => 'nullable|numeric|min:0|max:100',
         ])->validate();
 
         foreach ($validated as $key => $value) {

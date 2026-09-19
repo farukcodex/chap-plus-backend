@@ -22,7 +22,6 @@ class PlatformSetting extends Model
         'bus_commission_percent'        => 10.0,
         'hotel_commission_percent'      => 10.0,
         'rider_commission_percent'      => 5.0,
-        'merchant_commission_percent'   => 10.0,
     ];
 
     /**
@@ -36,18 +35,10 @@ class PlatformSetting extends Model
         $settings = static::whereIn('key', $keys)->pluck('value', 'key')->toArray();
 
         $rates = [];
-        $globalMerchant = isset($settings['merchant_commission_percent']) && is_numeric($settings['merchant_commission_percent'])
-            ? (float) $settings['merchant_commission_percent']
-            : self::DEFAULT_COMMISSIONS['merchant_commission_percent'];
-
         foreach (self::DEFAULT_COMMISSIONS as $key => $defaultVal) {
-            if (isset($settings[$key]) && is_numeric($settings[$key])) {
-                $rates[$key] = (float) $settings[$key];
-            } elseif ($key !== 'rider_commission_percent') {
-                $rates[$key] = $globalMerchant;
-            } else {
-                $rates[$key] = (float) $defaultVal;
-            }
+            $rates[$key] = isset($settings[$key]) && is_numeric($settings[$key])
+                ? (float) $settings[$key]
+                : (float) $defaultVal;
         }
 
         return $rates;
@@ -65,19 +56,12 @@ class PlatformSetting extends Model
             'bus'                  => 'bus_commission_percent',
             'hotel'                => 'hotel_commission_percent',
             'rider'                => 'rider_commission_percent',
-            default                => 'merchant_commission_percent',
+            default                => 'ecommerce_commission_percent',
         };
 
         $val = static::where('key', $key)->value('value');
         if ($val !== null && is_numeric($val)) {
             return (float) $val;
-        }
-
-        if ($key !== 'rider_commission_percent') {
-            $fallback = static::where('key', 'merchant_commission_percent')->value('value');
-            if ($fallback !== null && is_numeric($fallback)) {
-                return (float) $fallback;
-            }
         }
 
         return self::DEFAULT_COMMISSIONS[$key] ?? 10.0;
