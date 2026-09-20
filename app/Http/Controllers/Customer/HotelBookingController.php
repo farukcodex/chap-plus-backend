@@ -97,12 +97,47 @@ class HotelBookingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $bookings = HotelBooking::with(['hotel.images'])
-            ->where('user_id', $request->user()->id)
-            ->latest()
-            ->paginate(15);
+        $userId = $request->user()->id;
+        $filter = $request->query('filter', 'active'); // active, completed, cancelled
 
-        return $this->apiSuccess('Bookings retrieved successfully', ['bookings' => $bookings]);
+        $activeStatuses = ['pending_payment', 'paid', 'confirmed', 'checked_in'];
+        $completedStatuses = ['checked_out'];
+        $cancelledStatuses = ['cancelled', 'failed'];
+
+        $query = HotelBooking::with(['hotel.images', 'merchantProfile', 'user:id,name,email'])
+            ->where('user_id', $userId);
+
+        if ($filter === 'active') {
+            $query->whereIn('status', $activeStatuses);
+        } elseif ($filter === 'completed') {
+            $query->whereIn('status', $completedStatuses);
+        } elseif ($filter === 'cancelled') {
+            $query->whereIn('status', $cancelledStatuses);
+        }
+
+        $perPage = (int) $request->input('per_page', 10);
+        $page = $request->input('page') ? (int) $request->input('page') : null;
+        $bookings = $query->latest()->paginate($perPage, ['*'], 'page', $page);
+
+        // Single aggregation query for tab badge counts in Figma
+        $countsRaw = HotelBooking::where('user_id', $userId)
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN status IN ('" . implode("','", $activeStatuses) . "') THEN 1 ELSE 0 END), 0) as active_count,
+                COALESCE(SUM(CASE WHEN status IN ('" . implode("','", $completedStatuses) . "') THEN 1 ELSE 0 END), 0) as completed_count,
+                COALESCE(SUM(CASE WHEN status IN ('" . implode("','", $cancelledStatuses) . "') THEN 1 ELSE 0 END), 0) as cancelled_count
+            ")
+            ->first();
+
+        $counts = [
+            'active'    => (int) ($countsRaw->active_count ?? 0),
+            'completed' => (int) ($countsRaw->completed_count ?? 0),
+            'cancelled' => (int) ($countsRaw->cancelled_count ?? 0),
+        ];
+
+        return $this->apiSuccess('Bookings retrieved successfully', [
+            'counts'   => $counts,
+            'bookings' => $bookings,
+        ]);
     }
 
     public function show(Request $request, string $id): JsonResponse
@@ -175,5 +210,28 @@ class HotelBookingController extends Controller
         } catch (Exception $e) {
             return $this->apiError('Failed to retry payment', 500, ['error' => $e->getMessage()]);
         }
+    }
+
+    public function cancel(Request $request, string $id): JsonResponse
+    {
+        $booking = HotelBooking::with(['hotel.images', 'merchantProfile'])
+            ->where('user_id', $request->user()->id)
+            ->find($id);
+
+        if (!$booking) {
+            return $this->apiError('Booking not found', 404);
+        }
+
+        if (in_array($booking->status, ['checked_in', 'checked_out', 'cancelled'])) {
+            return $this->apiError("You cannot cancel a booking that is already {$booking->status}", 400);
+        }
+
+        $booking->update([
+            'status' => 'cancelled'
+        ]);
+
+        return $this->apiSuccess('Booking cancelled successfully', [
+            'booking' => $booking->fresh(['hotel.images', 'merchantProfile'])
+        ]);
     }
 }

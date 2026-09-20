@@ -16,18 +16,23 @@ class RestaurantOrderController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $userId = $request->user()->id;
         $filter = $request->query('filter', 'active'); // active, completed, cancelled
+
+        $activeStatuses = ['pending_payment', 'paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way'];
+        $completedStatuses = ['delivered'];
+        $cancelledStatuses = ['cancelled', 'failed'];
 
         $query = Order::restaurant()
             ->with(['items.product.images', 'items.variant', 'merchantProfile', 'address', 'rider.riderProfile'])
-            ->where('user_id', $request->user()->id);
+            ->where('user_id', $userId);
 
         if ($filter === 'active') {
-            $query->whereIn('status', ['pending_payment', 'failed', 'paid', 'processing', 'ready_for_pickup', 'accepted', 'picked_up', 'on_the_way']);
+            $query->whereIn('status', $activeStatuses);
         } elseif ($filter === 'completed') {
-            $query->where('status', 'delivered');
+            $query->whereIn('status', $completedStatuses);
         } elseif ($filter === 'cancelled') {
-            $query->whereIn('status', ['cancelled']);
+            $query->whereIn('status', $cancelledStatuses);
         }
 
         $perPage = (int) $request->input('per_page', 10);
@@ -35,7 +40,26 @@ class RestaurantOrderController extends Controller
         $orders = $query->latest()->paginate($perPage, ['*'], 'page', $page);
         $orders->through(fn($order) => (new RestaurantOrderResource($order))->toArray($request));
 
-        return $this->apiSuccess('Restaurant orders retrieved successfully', ['orders' => $orders]);
+        // Calculate tab counts in a single efficient query
+        $countsRaw = Order::restaurant()
+            ->where('user_id', $userId)
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN status IN ('" . implode("','", $activeStatuses) . "') THEN 1 ELSE 0 END), 0) as active_count,
+                COALESCE(SUM(CASE WHEN status IN ('" . implode("','", $completedStatuses) . "') THEN 1 ELSE 0 END), 0) as completed_count,
+                COALESCE(SUM(CASE WHEN status IN ('" . implode("','", $cancelledStatuses) . "') THEN 1 ELSE 0 END), 0) as cancelled_count
+            ")
+            ->first();
+
+        $counts = [
+            'active'    => (int) ($countsRaw->active_count ?? 0),
+            'completed' => (int) ($countsRaw->completed_count ?? 0),
+            'cancelled' => (int) ($countsRaw->cancelled_count ?? 0),
+        ];
+
+        return $this->apiSuccess('Restaurant orders retrieved successfully', [
+            'counts' => $counts,
+            'orders' => $orders,
+        ]);
     }
 
     public function show(Request $request, string $id): JsonResponse

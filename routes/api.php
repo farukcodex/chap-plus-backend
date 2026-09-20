@@ -90,6 +90,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/bookings', [\App\Http\Controllers\Customer\HotelBookingController::class, 'index']);
         Route::get('/bookings/{id}', [\App\Http\Controllers\Customer\HotelBookingController::class, 'show']);
         Route::post('/bookings/{id}/retry-payment', [\App\Http\Controllers\Customer\HotelBookingController::class, 'retryPayment']);
+        Route::post('/bookings/{id}/cancel', [\App\Http\Controllers\Customer\HotelBookingController::class, 'cancel']);
     });
 
     // Customer Bus API
