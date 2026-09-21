@@ -97,4 +97,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(FavoriteRestaurant::class);
     }
+
+    public function favoriteHotels()
+    {
+        return $this->hasMany(FavoriteHotel::class);
+    }
 }

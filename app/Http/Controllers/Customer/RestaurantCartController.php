@@ -21,7 +21,7 @@ class RestaurantCartController extends Controller
             'type' => 'restaurant'
         ]);
 
-        $cart->load(['items.product.merchantProfile', 'items.variant']);
+        $cart->load(['items.product.images', 'items.product.merchantProfile', 'items.variant']);
 
         $subTotal = 0;
         $deliveryCharge = 0;

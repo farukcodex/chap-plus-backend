@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\Hotel;
 use App\Models\MerchantProfile;
+use App\Models\FavoriteHotel;
 use App\Traits\ApiResponseTrait;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class HotelController extends Controller
 {
@@ -84,7 +86,7 @@ class HotelController extends Controller
         if ($targetLat !== null && $targetLon !== null) {
             $query->join('merchant_profiles', 'hotels.merchant_profile_id', '=', 'merchant_profiles.id')
                 ->selectRaw(
-                    "(6371 * acos(
+                    "hotels.*, (6371 * acos(
                         LEAST(1.0, GREATEST(-1.0, 
                             cos(radians(?)) * cos(radians(COALESCE(hotels.lat, merchant_profiles.latitude))) 
                             * cos(radians(COALESCE(hotels.lon, merchant_profiles.longitude)) - radians(?)) 
@@ -223,6 +225,14 @@ class HotelController extends Controller
 
         $properties = $query->paginate($perPage);
 
+        $authCustomer = $request->user() ?? Auth::guard('sanctum')->user();
+        $favoriteHotelIds = $authCustomer ? FavoriteHotel::where('user_id', $authCustomer->id)->pluck('hotel_id')->toArray() : [];
+
+        $properties->getCollection()->transform(function ($property) use ($favoriteHotelIds) {
+            $property->is_favorite = in_array($property->id, $favoriteHotelIds);
+            return $property;
+        });
+
         return $this->apiSuccess('Properties retrieved successfully', [
             'properties' => $properties
         ]);
@@ -231,7 +241,7 @@ class HotelController extends Controller
     /**
      * View details of a specific property
      */
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
         $property = Hotel::with(['images', 'merchantProfile', 'reviews.user'])
             ->withAvg('reviews', 'rating')
@@ -242,6 +252,9 @@ class HotelController extends Controller
         if (!$property) {
             return $this->apiError('Property not found', 404);
         }
+
+        $authCustomer = $request->user() ?? Auth::guard('sanctum')->user();
+        $property->is_favorite = $authCustomer ? FavoriteHotel::where('user_id', $authCustomer->id)->where('hotel_id', $property->id)->exists() : false;
 
         return $this->apiSuccess('Property details retrieved', [
             'property' => $property
@@ -269,7 +282,7 @@ class HotelController extends Controller
     /**
      * View details of a specific Host
      */
-    public function hostDetails(string $id): JsonResponse
+    public function hostDetails(Request $request, string $id): JsonResponse
     {
         $host = MerchantProfile::with(['hotels' => function ($q) {
             $q->where('is_active', true)->with('images');
@@ -283,6 +296,16 @@ class HotelController extends Controller
 
         if (!$host) {
             return $this->apiError('Host not found', 404);
+        }
+
+        $authCustomer = $request->user() ?? Auth::guard('sanctum')->user();
+        $favoriteHotelIds = $authCustomer ? FavoriteHotel::where('user_id', $authCustomer->id)->pluck('hotel_id')->toArray() : [];
+
+        if ($host->hotels) {
+            $host->hotels->transform(function ($hotel) use ($favoriteHotelIds) {
+                $hotel->is_favorite = in_array($hotel->id, $favoriteHotelIds);
+                return $hotel;
+            });
         }
 
         return $this->apiSuccess('Host details retrieved', [
