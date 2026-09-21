@@ -83,6 +83,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/properties/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'show']);
         Route::post('/properties/{id}/reviews', [\App\Http\Controllers\Customer\HotelController::class, 'addReview']);
 
+        Route::prefix('favorites')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Customer\FavoriteController::class, 'favoriteHotels']);
+            Route::post('/{id}', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggleHotel']);
+        });
+        Route::post('/properties/{id}/favorite', [\App\Http\Controllers\Customer\FavoriteController::class, 'toggleHotel']);
+
         Route::get('/hosts', [\App\Http\Controllers\Customer\HotelController::class, 'hosts']);
         Route::get('/hosts/{id}', [\App\Http\Controllers\Customer\HotelController::class, 'hostDetails']);
 

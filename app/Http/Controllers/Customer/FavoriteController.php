@@ -161,4 +161,90 @@ class FavoriteController extends Controller
 
         return $this->apiSuccess('Added restaurant to favorites', ['is_favorite' => true]);
     }
+
+    /**
+     * List favorite hotels for the authenticated user.
+     */
+    public function favoriteHotels(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $profileLat = $user?->userProfile?->latitude;
+        $profileLon = $user?->userProfile?->longitude;
+
+        $targetLat = $request->filled('lat') 
+            ? (float) $request->lat 
+            : ($profileLat !== null ? (float) $profileLat : null);
+
+        $targetLon = $request->filled('lng') 
+            ? (float) $request->lng 
+            : ($request->filled('lon') ? (float) $request->lon : ($profileLon !== null ? (float) $profileLon : null));
+
+        $query = \App\Models\Hotel::query()
+            ->with(['images', 'merchantProfile'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews')
+            ->where('hotels.is_active', true)
+            ->whereHas('favorites', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+
+        if ($targetLat !== null && $targetLon !== null) {
+            $query->join('merchant_profiles', 'hotels.merchant_profile_id', '=', 'merchant_profiles.id')
+                ->selectRaw(
+                    "hotels.*, (6371 * acos(
+                        LEAST(1.0, GREATEST(-1.0, 
+                            cos(radians(?)) * cos(radians(COALESCE(hotels.lat, merchant_profiles.latitude))) 
+                            * cos(radians(COALESCE(hotels.lon, merchant_profiles.longitude)) - radians(?)) 
+                            + sin(radians(?)) * sin(radians(COALESCE(hotels.lat, merchant_profiles.latitude)))
+                        ))
+                    )) AS distance_km",
+                    [$targetLat, $targetLon, $targetLat]
+                )->orderBy('distance_km', 'asc');
+        } else {
+            $query->latest('hotels.id');
+        }
+
+        $perPage = (int) $request->input('per_page', 15);
+        $hotels = $query->paginate($perPage);
+
+        // Append is_favorite = true to each record
+        $hotels->getCollection()->transform(function ($item) {
+            $item->is_favorite = true;
+            return $item;
+        });
+
+        return $this->apiSuccess('Favorite hotels retrieved successfully', [
+            'properties' => $hotels
+        ]);
+    }
+
+    /**
+     * Toggle favorite status for a hotel property.
+     */
+    public function toggleHotel(Request $request, int $hotelId): JsonResponse
+    {
+        $hotel = \App\Models\Hotel::where('is_active', true)->find($hotelId);
+
+        if (!$hotel) {
+            return $this->apiError('Hotel property not found', 404, ['code' => 'HOTEL_NOT_FOUND']);
+        }
+
+        $userId = $request->user()->id;
+
+        $favorite = \App\Models\FavoriteHotel::where('user_id', $userId)
+            ->where('hotel_id', $hotelId)
+            ->first();
+
+        if ($favorite) {
+            $favorite->delete();
+            return $this->apiSuccess('Removed hotel from favorites', ['is_favorite' => false]);
+        }
+
+        \App\Models\FavoriteHotel::create([
+            'user_id' => $userId,
+            'hotel_id' => $hotelId,
+        ]);
+
+        return $this->apiSuccess('Added hotel to favorites', ['is_favorite' => true]);
+    }
 }

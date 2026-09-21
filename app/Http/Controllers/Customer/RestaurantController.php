@@ -31,8 +31,8 @@ class RestaurantController extends Controller
             ->where('type', 'restaurant')
             ->with(['subcategories' => function ($query) {
                 $query->select('id', 'name', 'slug', 'parent_id', 'type')
-                      ->whereNull('merchant_profile_id')
-                      ->where('type', 'restaurant');
+                    ->whereNull('merchant_profile_id')
+                    ->where('type', 'restaurant');
             }])
             ->get();
 
@@ -109,8 +109,8 @@ class RestaurantController extends Controller
         if ($request->boolean('include_subcategories', true)) {
             $query->with(['subcategories' => function ($q) {
                 $q->select('id', 'name', 'slug', 'parent_id', 'type')
-                  ->whereNull('merchant_profile_id')
-                  ->where('type', 'restaurant');
+                    ->whereNull('merchant_profile_id')
+                    ->where('type', 'restaurant');
             }]);
         }
 
@@ -176,12 +176,12 @@ class RestaurantController extends Controller
         $isPopular = $request->boolean('popular') || $sortBy === 'popular' || $sortBy === 'top_rated';
 
         // Resolve coordinates
-        $targetLat = isset($validated['lat']) 
-            ? (float) $validated['lat'] 
+        $targetLat = isset($validated['lat'])
+            ? (float) $validated['lat']
             : ($profileLat !== null ? (float) $profileLat : null);
-            
-        $targetLon = isset($validated['lng']) 
-            ? (float) $validated['lng'] 
+
+        $targetLon = isset($validated['lng'])
+            ? (float) $validated['lng']
             : (isset($validated['lon']) ? (float) $validated['lon'] : ($profileLon !== null ? (float) $profileLon : null));
 
         $query = MerchantProfile::withAvg('reviews', 'rating')
@@ -194,9 +194,9 @@ class RestaurantController extends Controller
             $search = trim($request->input('search'));
             $query->where(function ($q) use ($search) {
                 $q->where('business_name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%")
-                  ->orWhere('city', 'LIKE', "%{$search}%")
-                  ->orWhere('address', 'LIKE', "%{$search}%");
+                    ->orWhere('description', 'LIKE', "%{$search}%")
+                    ->orWhere('city', 'LIKE', "%{$search}%")
+                    ->orWhere('address', 'LIKE', "%{$search}%");
             });
         }
 
@@ -219,17 +219,17 @@ class RestaurantController extends Controller
 
         if ($isNear && $targetLat !== null && $targetLon !== null) {
             $query->orderByRaw('latitude IS NULL OR longitude IS NULL ASC')
-                  ->orderBy('distance_km', 'asc')
-                  ->latest('id');
+                ->orderBy('distance_km', 'asc')
+                ->latest('id');
         } elseif ($isPopular) {
             $query->orderByRaw('COALESCE(reviews_avg_rating, 0) DESC')
-                  ->orderByDesc('reviews_count')
-                  ->latest('id');
+                ->orderByDesc('reviews_count')
+                ->latest('id');
         } elseif ($targetLat !== null && $targetLon !== null && !$request->filled('sort_by')) {
             // Default when coordinates are provided without sort_by: order by distance
             $query->orderByRaw('latitude IS NULL OR longitude IS NULL ASC')
-                  ->orderBy('distance_km', 'asc')
-                  ->latest('id');
+                ->orderBy('distance_km', 'asc')
+                ->latest('id');
         } else {
             $query->latest('id');
         }
@@ -256,12 +256,12 @@ class RestaurantController extends Controller
         $profileLat = $user?->userProfile?->latitude;
         $profileLon = $user?->userProfile?->longitude;
 
-        $targetLat = $request->filled('lat') 
-            ? (float) $request->lat 
+        $targetLat = $request->filled('lat')
+            ? (float) $request->lat
             : ($profileLat !== null ? (float) $profileLat : null);
 
-        $targetLon = $request->filled('lng') 
-            ? (float) $request->lng 
+        $targetLon = $request->filled('lng')
+            ? (float) $request->lng
             : ($request->filled('lon') ? (float) $request->lon : ($profileLon !== null ? (float) $profileLon : null));
 
         $query = MerchantProfile::withAvg('reviews', 'rating')
@@ -289,8 +289,8 @@ class RestaurantController extends Controller
             return $this->apiError('Restaurant not found', 404);
         }
 
-        $restaurant->is_favorite = $user 
-            ? FavoriteRestaurant::where('user_id', $user->id)->where('merchant_profile_id', $restaurant->id)->exists() 
+        $restaurant->is_favorite = $user
+            ? FavoriteRestaurant::where('user_id', $user->id)->where('merchant_profile_id', $restaurant->id)->exists()
             : false;
 
         // Fetch highly recommended / top-rated foods
@@ -313,12 +313,85 @@ class RestaurantController extends Controller
                 ->get();
         }
 
-        // Fetch full restaurant menu items
-        $menuItems = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
-            ->where('is_active', true)
+        // Fetch categories available in this restaurant's menu
+        $assignedCategoryIds = Product::where('is_active', true)
             ->where('merchant_profile_id', $restaurant->id)
-            ->latest()
+            ->whereNotNull('category_id')
+            ->pluck('category_id')
+            ->unique();
+
+        $assignedCategories = ProductCategory::with('parent')->whereIn('id', $assignedCategoryIds)->get();
+
+        $rootCategoryIds = $assignedCategories->map(function ($cat) {
+            return $cat->getRootCategory()->id;
+        })->unique()->filter()->values();
+
+        $merchantRootCategoryIds = ProductCategory::where('merchant_profile_id', $restaurant->id)
+            ->whereNull('parent_id')
+            ->pluck('id');
+
+        $allRootIds = $rootCategoryIds->merge($merchantRootCategoryIds)->unique()->values();
+
+        $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+            ->whereIn('id', $allRootIds)
+            ->with(['subcategories' => function ($q) use ($assignedCategoryIds, $restaurant) {
+                $q->select('id', 'name', 'slug', 'parent_id', 'type')
+                    ->where(function ($subQ) use ($assignedCategoryIds, $restaurant) {
+                        $subQ->whereIn('id', $assignedCategoryIds)
+                            ->orWhere('merchant_profile_id', $restaurant->id);
+                    });
+            }])
             ->get();
+
+        if ($categories->isEmpty()) {
+            $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+                ->whereNull('parent_id')
+                ->whereNull('merchant_profile_id')
+                ->where('type', 'restaurant')
+                ->with(['subcategories' => function ($q) {
+                    $q->select('id', 'name', 'slug', 'parent_id', 'type')
+                        ->whereNull('merchant_profile_id')
+                        ->where('type', 'restaurant');
+                }])
+                ->get();
+        }
+
+        // Fetch full restaurant menu items (with optional category filtering)
+        $selectedCategory = null;
+        $menuQuery = Product::with(['images', 'variants', 'category.parent', 'merchantProfile'])
+            ->where('is_active', true)
+            ->where('merchant_profile_id', $restaurant->id);
+
+        if ($request->filled('category_id') || $request->filled('category_slug')) {
+            $categoryQuery = ProductCategory::query();
+
+            if ($request->filled('category_id')) {
+                $categoryQuery->where('id', $request->category_id);
+            } else {
+                $categoryQuery->where('slug', $request->category_slug);
+            }
+
+            $cat = $categoryQuery->first();
+
+            if ($cat) {
+                $selectedCategory = [
+                    'id'   => (int) $cat->id,
+                    'name' => (string) $cat->name,
+                    'slug' => (string) $cat->slug,
+                ];
+
+                $catIds = ProductCategory::where('parent_id', $cat->id)
+                    ->pluck('id')
+                    ->push($cat->id)
+                    ->toArray();
+
+                $menuQuery->whereIn('category_id', $catIds);
+            } else {
+                $menuQuery->where('category_id', 0);
+            }
+        }
+
+        $menuItems = $menuQuery->latest()->get();
 
         $user = Auth::guard('sanctum')->user();
         $favoriteIds = $user ? Favorite::where('user_id', $user->id)->pluck('product_id')->toArray() : [];
@@ -334,9 +407,11 @@ class RestaurantController extends Controller
         });
 
         return $this->apiSuccess('Restaurant details retrieved', [
-            'restaurant' => $restaurant,
+            'categories'         => $categories,
+            'restaurant'         => $restaurant,
+            // 'selected_category'  => $selectedCategory,
             'highly_recommended' => $transformedRecommended,
-            'menu' => $transformedMenu,
+            'menu'               => $transformedMenu,
         ]);
     }
 
@@ -371,6 +446,7 @@ class RestaurantController extends Controller
         }
 
         // Filter by Category / Cuisine
+        $selectedCategory = null;
         if ($request->filled('category_id') || $request->filled('category_slug')) {
             $categoryQuery = ProductCategory::query();
 
@@ -383,6 +459,12 @@ class RestaurantController extends Controller
             $category = $categoryQuery->first();
 
             if ($category) {
+                $selectedCategory = [
+                    'id'   => (int) $category->id,
+                    'name' => (string) $category->name,
+                    'slug' => (string) $category->slug,
+                ];
+
                 $categoryIds = ProductCategory::where('parent_id', $category->id)
                     ->pluck('id')
                     ->push($category->id)
@@ -399,7 +481,7 @@ class RestaurantController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                    ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
 
@@ -454,7 +536,23 @@ class RestaurantController extends Controller
             return (new RestaurantFoodResource($food))->toArray($request);
         });
 
-        return $this->apiSuccess('Foods retrieved', ['foods' => $foods]);
+        // Fetch all restaurant categories for top-level filters/tabs
+        $categories = ProductCategory::select('id', 'name', 'slug', 'parent_id', 'type')
+            ->whereNull('parent_id')
+            ->whereNull('merchant_profile_id')
+            ->where('type', 'restaurant')
+            ->with(['subcategories' => function ($q) {
+                $q->select('id', 'name', 'slug', 'parent_id', 'type')
+                    ->whereNull('merchant_profile_id')
+                    ->where('type', 'restaurant');
+            }])
+            ->get();
+
+        return $this->apiSuccess('Foods retrieved', [
+            'categories'        => $categories,
+            'selected_category' => $selectedCategory,
+            'foods'             => $foods,
+        ]);
     }
 
     /**
@@ -463,12 +561,12 @@ class RestaurantController extends Controller
     public function showFood(Request $request, string $id): JsonResponse
     {
         $food = Product::with([
-                'images',
-                'variants',
-                'category.parent',
-                'merchantProfile',
-                'reviews.user',
-            ])
+            'images',
+            'variants',
+            'category.parent',
+            'merchantProfile',
+            'reviews.user',
+        ])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->where('is_active', true)

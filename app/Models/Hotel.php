@@ -56,6 +56,11 @@ class Hotel extends Model
         return $this->hasMany(HotelBooking::class);
     }
 
+    public function favorites()
+    {
+        return $this->hasMany(FavoriteHotel::class);
+    }
+
     /**
      * Calculate how many rooms are available for a given date range.
      * Prevents double booking by checking existing active bookings.
